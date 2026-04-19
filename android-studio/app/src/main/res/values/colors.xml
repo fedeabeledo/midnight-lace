@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="crema">#FCEBDB</color>
+    <color name="rosa_decorativo">#D6888F</color>
+    <color name="rojo_oscuro">#9F021D</color>
+    <color name="rojo_medio">#713229</color>
+    <color name="rosa_claro">#F2D3C8</color>
+    <color name="verde_estado">#85B27A</color>
+    <color name="burdeos">#680314</color>
+    <color name="marron_texto">#510310</color>
+    <color name="amarillo_acento">#F7BD34</color>
+    <color name="blanco">#FFFFFF</color>
+    <color name="gris_finalizada">#D9D9D9</color>
+    <color name="rosa_finalizada">#B74953</color>
+    <color name="texto_oscuro">#333333</color>
+    <color name="crema_transparente">#B3FCEBDB</color>
+</resources>

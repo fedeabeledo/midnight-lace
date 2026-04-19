@@ -1,0 +1,3486 @@
+openapi: 3.0.3
+info:
+    title: Midnight Lace API
+    description: >
+        API REST para la aplicación *Midnight Lace*.
+
+
+        **GRUPO 1:**
+          - Abeledo, Federico
+          - Ghillino, Rocío Belén
+          - Novello, Victoria Abril
+          - Romero, Mailén Belén
+
+
+        ---
+
+
+        ## Clasificación de endpoints
+
+
+        ### Públicos (sin autenticación)
+
+        Accesibles sin token. Usados para registro, login y datos auxiliares.
+
+        - `POST /auth/registro`
+
+
+        - `POST /auth/confirmar`
+
+        - `POST /auth/login`
+
+        - `POST /auth/renovar`
+
+        - `GET  /paises`
+
+        - `GET  /paises/{id}`
+
+
+
+        ### Protegidos por rol: comprador
+
+        Requieren JWT con rol `comprador`. Todo usuario registrado y admitido los tiene.
+
+        - `GET/PATCH /perfil`
+
+
+        - `GET/POST  /medios-de-pago`
+
+        - `DELETE    /medios-de-pago/{id}`
+
+        - `GET/POST  /productos` (el POST crea el artículo y otorga rol dueño si no lo tiene)
+
+        - `GET       /productos/{id}`
+
+        - `GET       /subastas`
+
+        - `GET       /subastas/{id}`
+
+        - `GET       /subastas/{id}/catalogo`
+
+        - `GET       /subastas/{id}/item-actual`
+
+        - `GET/POST  /subastas/{idSubasta}/items/{idItem}/pujas`
+
+        - `GET       /mi/subastas`
+
+        - `GET       /mi/pujas`
+
+        - `GET       /mi/compras`
+
+        - `GET       /mi/multas`
+
+        - `POST      /mi/multas/{id}/pagar`
+
+        - `POST      /mi/compras/{id}/pagar`
+
+        - `GET       /mi/metricas`
+
+        - `GET       /mi/notificaciones`
+
+        - `PATCH     /mi/notificaciones/{id}`
+
+        - `PATCH     /mi/compras/{id}`
+
+
+
+        ### Protegidos por rol: dueño
+
+        Requieren JWT con rol `duenio`. Se obtiene al cargar el primer producto.
+
+        - `GET       /productos/{id}/seguro`
+
+        - `PATCH     /productos/{id}/aceptar-condiciones`
+
+        - `GET/POST  /duenio/cuentas-cobro`
+
+        - `DELETE    /duenio/cuentas-cobro/{id}`
+
+
+
+        ### Protegidos por rol: subastador
+
+        Requieren JWT con rol `subastador`. Cuenta creada por un empleado.
+
+        - `GET       /subastador/subastas`
+
+
+        - `POST      /subastador/subastas`
+
+        - `PATCH     /subastador/subastas/{id}`
+
+        - `PATCH     /subastador/subastas/{id}/estado`
+
+        - `GET       /subastador/subastas/{id}/registros`
+
+        - `POST      /subastador/catalogos`
+
+        - `POST      /subastador/catalogos/{id}/items`
+
+        - `DELETE    /subastador/catalogos/{idCatalogo}/items/{idItem}`
+
+        - `GET       /subastador/productos`
+
+
+        ### Protegidos por rol: empleado (admin)
+
+        Requieren JWT con rol `empleado`. Endpoints de gestión interna.
+
+        - `GET/PATCH  /admin/clientes`
+
+
+        - `GET/PATCH  /admin/clientes/{id}`
+
+        - `GET        /admin/multas`
+
+        - `POST       /admin/subastadores`
+
+        - `POST       /medios-de-pago/{id}/verificar` (también empleado)
+
+
+
+        ### Internos (sin exposición pública)
+
+        Llamados únicamente por el backend o tareas programadas. No deben estar
+        accesibles desde la app ni desde internet. Se documentan aquí para referencia del equipo.
+
+
+        - `POST /interno/verificacion-cliente` — tras el registro de un comprador, asigna categoría
+          y estado de admisión de forma aleatoria. Si es aprobado, dispara el email con el token
+          para setear la clave.
+
+
+        - `POST /interno/verificacion-producto` — tras la carga de un producto por un dueño,
+          aprueba o rechaza de forma aleatoria. Si se aprueba, asigna un subastador al azar
+          (`estadoProducto = 'asignado'`). Si se rechaza, notifica al dueño por el sistema
+          de notificaciones (`estadoProducto = 'rechazado'`).
+
+
+        - `POST /interno/cierre-item` — se dispara cuando expira el `duracionItemMinutos` de un
+          ítem en subasta. Lógica que ejecuta:
+
+          1. Si hubo pujas: marca la última como ganadora (`ganador = 'si'`), genera el
+             `registroDeSubasta` con el importe, comisión y costo de envío, marca el producto
+             como vendido (`estadoProducto = 'vendido'`, `disponible = 'no'`), marca el ítem
+             como `subastado = 'si'`, descuenta del `montoDisponible` si el medio de pago es
+             cheque certificado, y crea una notificación para el comprador ganador y otra para
+             el dueño del producto.
+
+          2. Si no hubo pujas: genera el `registroDeSubasta` con el precio base como importe
+             y el usuario especial de la empresa como cliente, marca el ítem como `subastado = 'si'`.
+
+        - `POST /interno/verificacion-condiciones` — al agregarse un producto al catálogo,
+          notifica al dueño y actualiza `estadoProducto` a "pendiente_confirmacion".
+          Si el dueño no responde en un plazo definido, se asume rechazo y vuelve a "asignado".
+
+          3. Emite los eventos WS `pujaGanadora` (si corresponde) y `cambioItem` a todos los
+             conectados a la subasta.
+
+
+        - `POST /interno/cierre-subasta` — se dispara cuando el último ítem del catálogo cierra
+          su turno. Verifica que todos los ítems estén en estado `subastado = 'si'`, actualiza
+          el estado de la subasta a `cerrada` y emite el evento WS `subastaFinalizada`.
+
+    version: 1.0.0
+
+# ============================================================
+# SEGURIDAD
+# JWT Bearer. El backend determina el rol revisando en qué
+# tablas está el identificador del usuario al momento del login
+# (clientes, duenios, subastadores, empleados).
+# Un usuario puede tener roles comprador+dueño simultáneamente.
+# ============================================================
+components:
+    securitySchemes:
+        bearerAuth:
+            type: http
+            scheme: bearer
+            bearerFormat: JWT
+
+    parameters:
+        pagina:
+            name: pagina
+            in: query
+            description: Número de página (base 1)
+            required: false
+            schema:
+                type: integer
+                default: 1
+                minimum: 1
+        cantidad:
+            name: cantidad
+            in: query
+            description: Cantidad de resultados por página
+            required: false
+            schema:
+                type: integer
+                default: 20
+                minimum: 1
+                maximum: 100
+        pathId:
+            name: id
+            in: path
+            required: true
+            schema:
+                type: integer
+
+    schemas:
+        # --------------------------------------------------------
+        # PAGINACION
+        # --------------------------------------------------------
+        MetaPaginacion:
+            type: object
+            properties:
+                pagina:
+                    type: integer
+                    example: 1
+                cantidad:
+                    type: integer
+                    example: 20
+                total:
+                    type: integer
+                    example: 150
+                totalPaginas:
+                    type: integer
+                    example: 8
+
+        # --------------------------------------------------------
+        # ERRORES
+        # --------------------------------------------------------
+        Error:
+            type: object
+            properties:
+                codigo:
+                    type: string
+                    description: >
+                        Código de error legible por el frontend para tomar decisiones.
+                        Códigos posibles en pujas:
+                        PUJA_MONTO_INSUFICIENTE — el importe no supera la última oferta + 1% del precio base.
+                        PUJA_MONTO_EXCEDIDO — el importe supera la última oferta + 20% del precio base (solo aplica a subastas comun/especial/plata).
+                        PUJA_EN_PROCESO — hay una puja anterior aún siendo confirmada, reintentar.
+                        PUJA_ITEM_INACTIVO — el ítem ya no está en subasta (se agotó el tiempo o fue vendido).
+                        PUJA_CHEQUE_SIN_FONDOS — el montoDisponible del cheque certificado no alcanza.
+                    example: PUJA_MONTO_EXCEDIDO
+                mensaje:
+                    type: string
+                    description: Mensaje legible para mostrar al usuario.
+                    example: "El importe supera el máximo permitido para esta subasta."
+                detalle:
+                    type: object
+                    description: >
+                        Información adicional específica del error. Presente solo cuando
+                        aplica. En errores de puja incluye los límites calculados para
+                        que el frontend pueda mostrarlos sin hacer otro request.
+                    properties:
+                        pujaMinima:
+                            type: number
+                            description: Mínimo válido para la próxima puja.
+                            example: 15150.00
+                        pujaMaxima:
+                            type: number
+                            nullable: true
+                            description: Máximo válido. Null para subastas oro/platino.
+                            example: 17000.00
+
+        ErrorNoAutenticado:
+            type: object
+            properties:
+                codigo:
+                    type: string
+                    example: NO_AUTENTICADO
+                mensaje:
+                    type: string
+                    example: No autenticado. Iniciá sesión para continuar.
+
+        ErrorSinPermiso:
+            type: object
+            properties:
+                codigo:
+                    type: string
+                    example: SIN_PERMISO
+                mensaje:
+                    type: string
+                    example: No tenés permisos para realizar esta acción.
+
+        ErrorNoEncontrado:
+            type: object
+            properties:
+                codigo:
+                    type: string
+                    example: NO_ENCONTRADO
+                mensaje:
+                    type: string
+                    example: El recurso solicitado no existe.
+
+        ErrorValidacion:
+            type: object
+            properties:
+                codigo:
+                    type: string
+                    example: ERROR_VALIDACION
+                mensaje:
+                    type: string
+                    example: Datos inválidos o incompletos.
+
+        # --------------------------------------------------------
+        # AUTH
+        # --------------------------------------------------------
+        SolicitudRegistro:
+            type: object
+            required:
+                [
+                    documento,
+                    nombre,
+                    apellido,
+                    email,
+                    nombreUsuario,
+                    direccion,
+                    altura,
+                    localidad,
+                    ciudad,
+                    idPais,
+                    fotoDocFrente,
+                    fotoDocDorso,
+                ]
+            properties:
+                documento:
+                    type: string
+                    example: "42069666"
+                nombre:
+                    type: string
+                    example: "Avdotia Románovna"
+                apellido:
+                    type: string
+                    example: "Raskólnikova"
+                email:
+                    type: string
+                    format: email
+                    example: "dunechka@email.com"
+                nombreUsuario:
+                    type: string
+                    example: "dunechka"
+                    description: Debe ser único en el sistema.
+                direccion:
+                    type: string
+                    description: Nombre de la calle del domicilio legal.
+                    example: "Lavalle"
+                altura:
+                    type: string
+                    description: Altura del domicilio legal.
+                    example: "867"
+                departamento:
+                    type: string
+                    description: Departamento o piso. Opcional.
+                    example: "3B"
+                localidad:
+                    type: string
+                    example: "Quilmes"
+                ciudad:
+                    type: string
+                    example: "Quilmes"
+                idPais:
+                    type: integer
+                    example: 10
+                fotoDocFrente:
+                    type: string
+                    format: binary
+                    description: Archivo de imagen del frente del documento.
+                fotoDocDorso:
+                    type: string
+                    format: binary
+                    description: Archivo de imagen del dorso del documento.
+                fotoPerfil:
+                    type: string
+                    format: binary
+                    description: Foto de perfil. Opcional.
+
+        RespuestaRegistro:
+            type: object
+            properties:
+                mensaje:
+                    type: string
+                    example: "Solicitud recibida. Si los datos son válidos, recibirás un email para completar el registro."
+
+        SolicitudConfirmarCuenta:
+            type: object
+            required: [token, clave]
+            properties:
+                token:
+                    type: string
+                    description: Token temporal recibido por email
+                    example: "eyJhbGciOiJIUzI1NiIsInR5..."
+                clave:
+                    type: string
+                    format: password
+                    minLength: 8
+                    example: "LolitaFashion123!"
+
+        SolicitudLogin:
+            type: object
+            required: [email, clave]
+            properties:
+                email:
+                    type: string
+                    format: email
+                    example: "dunechka@email.com"
+                clave:
+                    type: string
+                    format: password
+
+        RespuestaLogin:
+            type: object
+            properties:
+                tokenAcceso:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5..."
+                tokenRenovacion:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5..."
+                roles:
+                    type: array
+                    description: >
+                        Roles activos del usuario. Un mismo usuario puede tener comprador+duenio.
+                        Solo subastador o empleado nunca van combinados con comprador/duenio.
+                    items:
+                        type: string
+                        enum: [comprador, duenio, subastador, empleado]
+                    example: ["comprador", "duenio"]
+                multaImpaga:
+                    type: boolean
+                    description: >
+                        Si es true, el usuario tiene al menos una multa impaga.
+                        El frontend debe redirigir a la pantalla de pago y bloquear
+                        el resto de la navegación hasta que se resuelva.
+                        El flag también está presente en el payload del JWT.
+                    example: false
+
+        SolicitudRenovarToken:
+            type: object
+            required: [tokenRenovacion]
+            properties:
+                tokenRenovacion:
+                    type: string
+
+        # --------------------------------------------------------
+        # PAIS
+        # --------------------------------------------------------
+        Pais:
+            type: object
+            properties:
+                numero:
+                    type: integer
+                    example: 10
+                nombre:
+                    type: string
+                    example: "Argentina"
+                nombreCorto:
+                    type: string
+                    example: "ARG"
+                capital:
+                    type: string
+                    example: "Buenos Aires"
+                nacionalidad:
+                    type: string
+                    example: "argentino/a"
+                idiomas:
+                    type: string
+                    example: "Español"
+
+        # --------------------------------------------------------
+        # PERFIL
+        # --------------------------------------------------------
+        Perfil:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                documento:
+                    type: string
+                nombre:
+                    type: string
+                apellido:
+                    type: string
+                nombreUsuario:
+                    type: string
+                email:
+                    type: string
+                direccion:
+                    type: string
+                    description: Calle del domicilio legal.
+                altura:
+                    type: string
+                departamento:
+                    type: string
+                    nullable: true
+                localidad:
+                    type: string
+                ciudad:
+                    type: string
+                estado:
+                    type: string
+                    enum: [pendiente, activo, inactivo]
+                    description: >
+                        pendiente — registro iniciado, aún no completó el seteo de contraseña.
+                        activo — registro completo, puede operar con normalidad.
+                        inactivo — rechazado o dado de baja.
+                urlFotoDocFrente:
+                    type: string
+                urlFotoDocDorso:
+                    type: string
+                fechaActualizacionFotoDni:
+                    type: string
+                    format: date
+                    description: Fecha en que se subieron por última vez las fotos del DNI. Generado automáticamente.
+                urlFotoPerfil:
+                    type: string
+                    nullable: true
+                    description: URL de la foto de perfil. Null si el usuario no cargó una.
+                pais:
+                    $ref: "#/components/schemas/Pais"
+
+        SolicitudActualizarPerfil:
+            type: object
+            description: >
+                Todos los campos son opcionales. Solo se actualizan los que se envían.
+                Se envía como multipart/form-data por la posibilidad de incluir archivos.
+                Al actualizar fotoDocFrente o fotoDocDorso se actualiza fechaActualizacionFotoDni automáticamente.
+            properties:
+                nombre:
+                    type: string
+                apellido:
+                    type: string
+                email:
+                    type: string
+                    format: email
+                    description: Si se cambia, debe ser único en el sistema.
+                nombreUsuario:
+                    type: string
+                    description: Si se cambia, debe ser único en el sistema.
+                direccion:
+                    type: string
+                    description: Calle del domicilio legal.
+                altura:
+                    type: string
+                departamento:
+                    type: string
+                    description: Opcional. Enviar null para borrarlo.
+                localidad:
+                    type: string
+                ciudad:
+                    type: string
+                fotoPerfil:
+                    type: string
+                    format: binary
+                    description: Foto de perfil. Opcional.
+                fotoDocFrente:
+                    type: string
+                    format: binary
+                    description: Foto del frente del documento. Opcional.
+                fotoDocDorso:
+                    type: string
+                    format: binary
+                    description: Foto del dorso del documento. Opcional.
+
+        # --------------------------------------------------------
+        # MEDIOS DE PAGO
+        # --------------------------------------------------------
+        MedioDePago:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                tipo:
+                    type: string
+                    enum: [cuentaBancaria, tarjetaCredito, chequeCertificado]
+                verificado:
+                    type: string
+                    enum: [si, no]
+                moneda:
+                    type: string
+                    enum: [ARS, USD]
+                activo:
+                    type: string
+                    enum: [si, no]
+                detalle:
+                    oneOf:
+                        - $ref: "#/components/schemas/DetalleCuentaBancaria"
+                        - $ref: "#/components/schemas/DetalleTarjetaCredito"
+                        - $ref: "#/components/schemas/DetalleChequeCertificado"
+
+        DetalleCuentaBancaria:
+            type: object
+            properties:
+                nombreBanco:
+                    type: string
+                    example: "Banco Nación"
+                numeroCuenta:
+                    type: string
+                    example: "0000003100012345678901"
+                idPais:
+                    type: integer
+                    example: 10
+
+        DetalleTarjetaCredito:
+            type: object
+            properties:
+                ultimosCuatroDigitos:
+                    type: string
+                    example: "4321"
+                nombreTitular:
+                    type: string
+                    example: "AVDOTIA RASKOLNIKOVA"
+                fechaVencimiento:
+                    type: string
+                    format: date
+                    example: "2027-08-01"
+                red:
+                    type: string
+                    example: "Visa"
+                esInternacional:
+                    type: string
+                    enum: [si, no]
+
+        DetalleChequeCertificado:
+            type: object
+            properties:
+                montoGarantizado:
+                    type: number
+                    example: 500000.00
+                montoDisponible:
+                    type: number
+                    example: 350000.00
+                fechaEntrega:
+                    type: string
+                    format: date
+
+        SolicitudAgregarMedioDePago:
+            type: object
+            required: [tipo, moneda, detalle]
+            properties:
+                tipo:
+                    type: string
+                    enum: [cuentaBancaria, tarjetaCredito, chequeCertificado]
+                moneda:
+                    type: string
+                    enum: [ARS, USD]
+                detalle:
+                    oneOf:
+                        - $ref: "#/components/schemas/DetalleCuentaBancaria"
+                        - $ref: "#/components/schemas/DetalleTarjetaCredito"
+                        - $ref: "#/components/schemas/DetalleChequeCertificado"
+
+        # --------------------------------------------------------
+        # PRODUCTO
+        # --------------------------------------------------------
+        Producto:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                fechaIngreso:
+                    type: string
+                    format: date
+                disponible:
+                    type: string
+                    enum: [si, no]
+                descripcionCatalogo:
+                    type: string
+                descripcionCompleta:
+                    type: string
+                declaracionPropiedad:
+                    type: boolean
+                idDuenio:
+                    type: integer
+                precioBase:
+                    type: number
+                    description: Precio base fijado por el dueño al cargar el producto.
+                nroPoliza:
+                    type: string
+                    description: Número de póliza de seguro asociada al producto
+                estadoProducto:
+                    type: string
+                    enum:
+                        [
+                            pendiente,
+                            asignado,
+                            rechazado,
+                            pendiente_confirmacion,
+                            en_subasta,
+                            vendido,
+                        ]
+                    description: >
+                        pendiente — recién creado, esperando verificación automática.
+                        asignado — verificación aprobada, en el pool de un subastador.
+                        rechazado — verificación fallida. Estado terminal, se devuelve con cargo.
+                        pendiente_confirmacion — agregado a un catálogo con precio y comisión, esperando confirmación del dueño. Si el dueño rechaza, vuelve a asignado.
+                        en_subasta — dueño aceptó condiciones, siendo subastado.
+                        vendido — vendido exitosamente.
+                deposito:
+                    $ref: "#/components/schemas/Deposito"
+                fotos:
+                    type: array
+                    items:
+                        $ref: "#/components/schemas/FotoProducto"
+                detalleArtistico:
+                    $ref: "#/components/schemas/DetalleArtistico"
+                componentes:
+                    type: array
+                    items:
+                        $ref: "#/components/schemas/ComponenteProducto"
+
+        FotoProducto:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                url:
+                    type: string
+                orden:
+                    type: integer
+
+        DetalleArtistico:
+            type: object
+            properties:
+                artista:
+                    type: string
+                fechaObra:
+                    type: string
+                    format: date
+                historia:
+                    type: string
+
+        ComponenteProducto:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                descripcion:
+                    type: string
+                cantidad:
+                    type: integer
+
+        SolicitudCrearProducto:
+            type: object
+            required:
+                [
+                    descripcionCompleta,
+                    declaracionPropiedad,
+                    precioBase,
+                    foto1,
+                    foto2,
+                    foto3,
+                    foto4,
+                    foto5,
+                    foto6,
+                ]
+            properties:
+                descripcionCompleta:
+                    type: string
+                declaracionPropiedad:
+                    type: boolean
+                    description: >
+                        El dueño declara que el bien le pertenece y no tiene
+                        impedimento legal para venderlo. Debe ser true para continuar.
+                precioBase:
+                    type: number
+                    minimum: 0.01
+                    description: Precio base de venta fijado por el dueño.
+                foto1:
+                    type: string
+                    format: binary
+                    description: Foto obligatoria 1 de 6.
+                foto2:
+                    type: string
+                    format: binary
+                    description: Foto obligatoria 2 de 6.
+                foto3:
+                    type: string
+                    format: binary
+                    description: Foto obligatoria 3 de 6.
+                foto4:
+                    type: string
+                    format: binary
+                    description: Foto obligatoria 4 de 6.
+                foto5:
+                    type: string
+                    format: binary
+                    description: Foto obligatoria 5 de 6.
+                foto6:
+                    type: string
+                    format: binary
+                    description: Foto obligatoria 6 de 6.
+                foto7:
+                    type: string
+                    format: binary
+                    description: Foto adicional opcional.
+                foto8:
+                    type: string
+                    format: binary
+                    description: Foto adicional opcional.
+                detallesArtisticos:
+                    type: string
+                    description: >
+                        JSON serializado con artista, fechaObra e historia.
+                        Se envía como string dentro del multipart porque el body es form-data.
+                    example: '{"artista":"Vivienne Westwood","fechaObra":"1995-01-01","historia":"..."}'
+                componentes:
+                    type: string
+                    description: >
+                        JSON serializado con array de componentes (descripcion, cantidad).
+                        Se envía como string dentro del multipart.
+                    example: '[{"descripcion":"Sombrero","cantidad":1},{"descripcion":"Guantes","cantidad":2}]'
+
+        # --------------------------------------------------------
+        # SEGURO
+        # --------------------------------------------------------
+        Seguro:
+            type: object
+            properties:
+                nroPoliza:
+                    type: string
+                compania:
+                    type: string
+                polizaCombinada:
+                    type: string
+                    enum: [si, no]
+                importe:
+                    type: number
+
+        # --------------------------------------------------------
+        # CUENTA DE COBRO (dueño)
+        # --------------------------------------------------------
+        CuentaCobro:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                nombreBanco:
+                    type: string
+                numeroCuenta:
+                    type: string
+                idPais:
+                    type: integer
+                moneda:
+                    type: string
+                    enum: [ARS, USD]
+                activa:
+                    type: string
+                    enum: [si, no]
+
+        SolicitudCrearCuentaCobro:
+            type: object
+            required: [nombreBanco, numeroCuenta, moneda]
+            properties:
+                nombreBanco:
+                    type: string
+                numeroCuenta:
+                    type: string
+                idPais:
+                    type: integer
+                moneda:
+                    type: string
+                    enum: [ARS, USD]
+
+        # --------------------------------------------------------
+        # DEPOSITO
+        # --------------------------------------------------------
+        Deposito:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                nombre:
+                    type: string
+                    example: "Depósito Central"
+                direccion:
+                    type: string
+                    example: "Av. Corrientes 1234, CABA"
+
+        # --------------------------------------------------------
+        # SUBASTA
+        # --------------------------------------------------------
+        Subasta:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                nombre:
+                    type: string
+                    example: "Colección Otoño 2026"
+                fecha:
+                    type: string
+                    format: date
+                hora:
+                    type: string
+                    example: "14:00:00"
+                estado:
+                    type: string
+                    enum: [programada, abierta, cerrada]
+                idSubastador:
+                    type: integer
+                ubicacion:
+                    type: string
+                capacidadAsistentes:
+                    type: integer
+                tieneDeposito:
+                    type: string
+                    enum: [si, no]
+                seguridadPropia:
+                    type: string
+                    enum: [si, no]
+                categoria:
+                    type: string
+                    enum: [comun, especial, plata, oro, platino]
+                moneda:
+                    type: string
+                    enum: [ARS, USD]
+                duracionItemMinutos:
+                    type: integer
+
+        SolicitudCrearSubasta:
+            type: object
+            required:
+                [nombre, fecha, hora, categoria, moneda, duracionItemMinutos]
+            properties:
+                nombre:
+                    type: string
+                    example: "Colección Otoño 2026"
+                fecha:
+                    type: string
+                    format: date
+                hora:
+                    type: string
+                ubicacion:
+                    type: string
+                capacidadAsistentes:
+                    type: integer
+                tieneDeposito:
+                    type: string
+                    enum: [si, no]
+                seguridadPropia:
+                    type: string
+                    enum: [si, no]
+                categoria:
+                    type: string
+                    enum: [comun, especial, plata, oro, platino]
+                moneda:
+                    type: string
+                    enum: [ARS, USD]
+                duracionItemMinutos:
+                    type: integer
+                    minimum: 1
+
+        SolicitudActualizarSubasta:
+            type: object
+            properties:
+                fecha:
+                    type: string
+                    format: date
+                hora:
+                    type: string
+                ubicacion:
+                    type: string
+                capacidadAsistentes:
+                    type: integer
+                tieneDeposito:
+                    type: string
+                    enum: [si, no]
+                seguridadPropia:
+                    type: string
+                    enum: [si, no]
+                duracionItemMinutos:
+                    type: integer
+                    minimum: 1
+
+        # --------------------------------------------------------
+        # CATALOGO
+        # --------------------------------------------------------
+        Catalogo:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                descripcion:
+                    type: string
+                idSubasta:
+                    type: integer
+                idSubastador:
+                    type: integer
+                items:
+                    type: array
+                    items:
+                        $ref: "#/components/schemas/ItemCatalogo"
+
+        ItemCatalogo:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                producto:
+                    $ref: "#/components/schemas/Producto"
+                orden:
+                    type: integer
+                precioBase:
+                    type: number
+                comision:
+                    type: number
+                subastado:
+                    type: string
+                    enum: [si, no]
+                iniciadoEn:
+                    type: string
+                    format: date-time
+                finalizadoEn:
+                    type: string
+                    format: date-time
+
+        SolicitudCrearCatalogo:
+            type: object
+            required: [descripcion, idSubasta]
+            properties:
+                descripcion:
+                    type: string
+                idSubasta:
+                    type: integer
+
+        SolicitudAgregarItemCatalogo:
+            type: object
+            required: [idProducto, orden, comision]
+            properties:
+                idProducto:
+                    type: integer
+                orden:
+                    type: integer
+                comision:
+                    type: number
+                    minimum: 0.01
+                    description: Comisión definida por el subastador. El precio base lo fija el dueño al cargar el producto.
+
+        # --------------------------------------------------------
+        # PUJA
+        # --------------------------------------------------------
+        Puja:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                idCliente:
+                    type: integer
+                idItem:
+                    type: integer
+                importe:
+                    type: number
+                ganador:
+                    type: string
+                    enum: [si, no]
+                realizadaEn:
+                    type: string
+                    format: date-time
+                # Campos enriquecidos para el historial del comprador.
+                # Evitan requests adicionales al frontend para mostrar el historial.
+                subasta:
+                    type: object
+                    properties:
+                        identificador:
+                            type: integer
+                        nombre:
+                            type: string
+                            example: "Colección Otoño 2026"
+                        fecha:
+                            type: string
+                            format: date
+                        categoria:
+                            type: string
+                            enum: [comun, especial, plata, oro, platino]
+                        moneda:
+                            type: string
+                            enum: [ARS, USD]
+                producto:
+                    type: object
+                    properties:
+                        identificador:
+                            type: integer
+                        descripcionCatalogo:
+                            type: string
+                            description: Descripción breve del producto para mostrar en el historial.
+
+        SolicitudCrearPuja:
+            type: object
+            required: [importe, idMedioDePago]
+            properties:
+                importe:
+                    type: number
+                    minimum: 0.01
+                idMedioDePago:
+                    type: integer
+                    description: ID del medio de pago verificado que respalda la puja
+
+        EstadoPujaActual:
+            type: object
+            properties:
+                idItem:
+                    type: integer
+                descripcionProducto:
+                    type: string
+                precioBase:
+                    type: number
+                mejorOferta:
+                    type: number
+                    nullable: true
+                    description: Mejor oferta actual. Null si nadie pujó todavía.
+                pujaMinima:
+                    type: number
+                    description: >
+                        Mínimo permitido para la próxima puja.
+                        Fórmula: última oferta + 1% del precio base.
+                pujaMaxima:
+                    type: number
+                    nullable: true
+                    description: >
+                        Máximo permitido para la próxima puja.
+                        Fórmula: última oferta + 20% del precio base.
+                        Null para subastas de categoría oro y platino (sin límite superior).
+                finalizaEn:
+                    type: string
+                    format: date-time
+                    description: Momento en que expira el turno de este ítem.
+
+        # --------------------------------------------------------
+        # REGISTRO DE SUBASTA (venta)
+        # --------------------------------------------------------
+        RegistroDeSubasta:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                idSubasta:
+                    type: integer
+                idProducto:
+                    type: integer
+                idCliente:
+                    type: integer
+                idDuenio:
+                    type: integer
+                idMedioDePago:
+                    type: integer
+                importe:
+                    type: number
+                comision:
+                    type: number
+                costoEnvio:
+                    type: number
+                moneda:
+                    type: string
+                    enum: [ARS, USD]
+                retiraPersonalmente:
+                    type: boolean
+                    description: Si retira en persona, pierde la cobertura del seguro.
+                pagado:
+                    type: boolean
+                    default: false
+                    description: >
+                        Indica si el comprador ya efectuó el pago de la compra.
+                        Se marca true al procesar exitosamente POST /mi/compras/{id}/pagar.
+
+        # --------------------------------------------------------
+        # PAGO
+        # --------------------------------------------------------
+        SolicitudPago:
+            type: object
+            required: [idMedioDePago]
+            properties:
+                idMedioDePago:
+                    type: integer
+                    description: >
+                        ID del medio de pago verificado con el que se realiza el pago.
+                        Debe pertenecer al comprador autenticado y estar activo y verificado.
+                        Si es cheque certificado, el montoDisponible debe alcanzar.
+
+        # --------------------------------------------------------
+        # MULTA
+        # --------------------------------------------------------
+        Multa:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                idCliente:
+                    type: integer
+                idRegistroSubasta:
+                    type: integer
+                importe:
+                    type: number
+                pagada:
+                    type: string
+                    enum: [si, no]
+                fechaEmision:
+                    type: string
+                    format: date-time
+                fechaVencimiento:
+                    type: string
+                    format: date-time
+
+        # --------------------------------------------------------
+        # NOTIFICACION
+        # --------------------------------------------------------
+        Notificacion:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                tipo:
+                    type: string
+                    enum:
+                        [
+                            compra_ganada,
+                            producto_vendido,
+                            producto_rechazado,
+                            producto_aceptado,
+                            devolucion_producto,
+                        ]
+                    description: >
+                        compra_ganada — el comprador ganó un ítem en subasta.
+                        producto_vendido — el dueño fue notificado de que su producto se vendió.
+                        producto_rechazado — el subastador rechazó el producto del dueño.
+                        producto_aceptado — el producto fue aceptado e incluido en una subasta futura.
+                        devolucion_producto — el producto será devuelto al dueño con cargo.
+                leida:
+                    type: boolean
+                    default: false
+                creadaEn:
+                    type: string
+                    format: date-time
+                detalle:
+                    type: object
+                    description: Campos adicionales según el tipo de notificación.
+                    properties:
+                        idRegistroSubasta:
+                            type: integer
+                            description: Presente en compra_ganada y producto_vendido.
+                        importe:
+                            type: number
+                            description: Presente en compra_ganada y producto_vendido.
+                        comision:
+                            type: number
+                            description: Presente en compra_ganada y producto_vendido.
+                        costoEnvio:
+                            type: number
+                            description: Presente en compra_ganada.
+                        moneda:
+                            type: string
+                            enum: [ARS, USD]
+                            description: Presente en compra_ganada y producto_vendido.
+                        idProducto:
+                            type: integer
+                            description: Presente en producto_rechazado, producto_aceptado y devolucion_producto.
+                        motivoRechazo:
+                            type: string
+                            description: Presente en producto_rechazado y devolucion_producto.
+                        idSubasta:
+                            type: integer
+                            description: Presente en producto_aceptado.
+                        nombreSubasta:
+                            type: string
+                            description: Presente en producto_aceptado.
+                        fechaSubasta:
+                            type: string
+                            format: date
+                            description: Presente en producto_aceptado.
+                        precioBase:
+                            type: number
+                            description: Presente en producto_aceptado.
+
+        # --------------------------------------------------------
+        # METRICAS DEL CLIENTE
+        # --------------------------------------------------------
+        MetricasCliente:
+            type: object
+            properties:
+                totalSubastasParticipadas:
+                    type: integer
+                totalGanadas:
+                    type: integer
+                totalPujasRealizadas:
+                    type: integer
+                totalImportePagado:
+                    type: number
+                totalImportePujado:
+                    type: number
+                porCategoria:
+                    type: array
+                    items:
+                        type: object
+                        properties:
+                            categoria:
+                                type: string
+                                enum: [comun, especial, plata, oro, platino]
+                            participaciones:
+                                type: integer
+                            ganadas:
+                                type: integer
+
+        # --------------------------------------------------------
+        # GESTION DE CLIENTES (empleado/admin)
+        # --------------------------------------------------------
+        ClienteAdmin:
+            type: object
+            properties:
+                identificador:
+                    type: integer
+                admitido:
+                    type: string
+                    enum: [si, no]
+                categoria:
+                    type: string
+                    enum: [comun, especial, plata, oro, platino]
+                idVerificador:
+                    type: integer
+                persona:
+                    $ref: "#/components/schemas/Perfil"
+                multas:
+                    type: array
+                    items:
+                        $ref: "#/components/schemas/Multa"
+
+        SolicitudActualizarCliente:
+            type: object
+            properties:
+                admitido:
+                    type: string
+                    enum: [si, no]
+                categoria:
+                    type: string
+                    enum: [comun, especial, plata, oro, platino]
+
+        SolicitudCrearSubastador:
+            type: object
+            required: [documento, nombre, apellido, email, matricula]
+            properties:
+                documento:
+                    type: string
+                nombre:
+                    type: string
+                apellido:
+                    type: string
+                email:
+                    type: string
+                    format: email
+                direccion:
+                    type: string
+                matricula:
+                    type: string
+                region:
+                    type: string
+
+# ============================================================
+# PATHS
+# ============================================================
+paths:
+    # ============================================================
+    # AUTH — Públicos
+    # ============================================================
+    /auth/registro:
+        post:
+            tags: [Autenticación]
+            summary: Registro de comprador (paso 1)
+            description: >
+                **Público.**
+                El usuario carga sus datos personales junto con las fotos de su documento
+                en un único request multipart. El sistema valida que el email no exista
+                y dispara automáticamente la verificación de categoría (aleatoria en esta
+                implementación). Si es aprobado, se le envía un email con un token para
+                setear su clave. La respuesta es siempre la misma independientemente de
+                si el email ya existe, para evitar enumeración de usuarios.
+            requestBody:
+                required: true
+                content:
+                    multipart/form-data:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudRegistro"
+            responses:
+                "202":
+                    description: Solicitud recibida y en proceso
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/RespuestaRegistro"
+                "400":
+                    description: Datos inválidos o incompletos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+
+    /auth/confirmar:
+        post:
+            tags: [Autenticación]
+            summary: Confirmación de cuenta y seteo de clave (paso 2)
+            description: >
+                **Público.**
+                El usuario recibe por email un token temporal. Con ese token setea
+                su clave y activa la cuenta.
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudConfirmarCuenta"
+            responses:
+                "200":
+                    description: Cuenta activada. Se devuelve el token de sesión directamente.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/RespuestaLogin"
+                "400":
+                    description: Token inválido, expirado, o clave que no cumple los requisitos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+
+    /auth/login:
+        post:
+            tags: [Autenticación]
+            summary: Login
+            description: >
+                **Público.**
+                Si el usuario tiene una multa impaga, el login devuelve 403 y no se emite token.
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudLogin"
+            responses:
+                "200":
+                    description: Login exitoso
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/RespuestaLogin"
+                "401":
+                    description: Credenciales incorrectas o cuenta no activa
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    /auth/renovar:
+        post:
+            tags: [Autenticación]
+            summary: Renovar access token
+            description: >
+                **Público.**
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudRenovarToken"
+            responses:
+                "200":
+                    description: Token renovado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/RespuestaLogin"
+                "401":
+                    description: Token de renovación inválido o expirado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    # ============================================================
+    # PAISES — Públicos (auxiliar para poblar selects)
+    # ============================================================
+    /paises:
+        get:
+            tags: [Países]
+            summary: Listar todos los países
+            description: >
+                **Público.**
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+            responses:
+                "200":
+                    description: Lista de países
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Pais"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+
+    /paises/{id}:
+        get:
+            tags: [Países]
+            summary: Obtener un país por ID
+            description: >
+                **Público.**
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            responses:
+                "200":
+                    description: País encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Pais"
+                "404":
+                    description: País no encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+    # ============================================================
+    # PERFIL — Comprador
+    # ============================================================
+    /perfil:
+        get:
+            tags: [Perfil]
+            summary: Ver perfil propio
+            description: >
+                **Rol requerido: comprador.**
+            security:
+                - bearerAuth: []
+            responses:
+                "200":
+                    description: Perfil del usuario autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Perfil"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+        patch:
+            tags: [Perfil]
+            summary: Actualizar datos del perfil propio
+            description: >
+                **Rol requerido: comprador.**
+                Solo se pueden actualizar dirección y fotos del documento.
+            security:
+                - bearerAuth: []
+            requestBody:
+                required: true
+                content:
+                    multipart/form-data:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudActualizarPerfil"
+            responses:
+                "200":
+                    description: Perfil actualizado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Perfil"
+                "400":
+                    description: Datos inválidos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    # ============================================================
+    # MEDIOS DE PAGO — Comprador
+    # ============================================================
+    /medios-de-pago:
+        get:
+            tags: [Medios de pago]
+            summary: Listar medios de pago del comprador autenticado
+            description: >
+                **Rol requerido: comprador.**
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+            responses:
+                "200":
+                    description: Lista de medios de pago
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/MedioDePago"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+        post:
+            tags: [Medios de pago]
+            summary: Agregar un medio de pago
+            description: >
+                **Rol requerido: comprador.**
+                El medio queda pendiente de verificación hasta que un empleado lo apruebe
+                (o verificación automática en esta implementación).
+            security:
+                - bearerAuth: []
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudAgregarMedioDePago"
+            responses:
+                "201":
+                    description: Medio de pago creado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/MedioDePago"
+                "400":
+                    description: Datos inválidos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    /medios-de-pago/{id}:
+        delete:
+            tags: [Medios de pago]
+            summary: Desactivar un medio de pago
+            description: >
+                **Rol requerido: comprador.**
+                Marca el medio como inactivo. No se elimina físicamente.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            responses:
+                "204":
+                    description: Medio de pago desactivado
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: El medio de pago no pertenece al comprador autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Medio de pago no encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+    /medios-de-pago/{id}/verificar:
+        post:
+            tags: [Medios de pago]
+            summary: Verificar un medio de pago
+            description: >
+                **Rol requerido: empleado.**
+                Marca el medio de pago como verificado.
+                Para cheques certificados, confirma que fue entregado físicamente antes
+                del inicio de la subasta. En esta implementación la verificación es automática.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            responses:
+                "200":
+                    description: Medio de pago verificado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/MedioDePago"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol empleado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Medio de pago no encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+    # ============================================================
+    # PRODUCTOS — Comprador (y dueño para algunos sub-endpoints)
+    # ============================================================
+    /productos:
+        get:
+            tags: [Productos]
+            summary: Listar productos del dueño autenticado
+            description: >
+                **Rol requerido: dueño.**
+                Devuelve solo los productos del usuario autenticado.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+                - name: estado
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      enum:
+                          [
+                              pendiente,
+                              asignado,
+                              rechazado,
+                              pendiente_confirmacion,
+                              en_subasta,
+                              vendido,
+                          ]
+            responses:
+                "200":
+                    description: Lista de productos del dueño
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Producto"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: El usuario no tiene rol de dueño
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+
+        post:
+            tags: [Productos]
+            summary: Cargar un artículo para subastar
+            description: >
+                **Rol requerido: comprador.**
+                El usuario carga un artículo para que la empresa lo evalúe.
+                Si es la primera vez que carga un artículo, el backend hace un INSERT
+                en la tabla `duenios` usando el mismo `identificador` de `personas`,
+                verificando primero que no exista ya un registro (INSERT condicional).
+                A partir de ese momento el JWT del usuario incluye el rol `duenio`
+                además de `comprador`. Si ya era dueño, no se crea nada nuevo.
+                La declaración de propiedad es obligatoria (debe ser true).
+                La inspección es automática y aleatoria en esta implementación:
+                si pasa, el estadoProducto queda en "asignado" y se asigna un
+                subastador al azar. Si no pasa, queda en "rechazado".
+            security:
+                - bearerAuth: []
+            requestBody:
+                required: true
+                content:
+                    multipart/form-data:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudCrearProducto"
+            responses:
+                "201":
+                    description: Artículo cargado. Estado inicial según resultado de verificación automática.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Producto"
+                "400":
+                    description: Datos inválidos (ej. menos de 6 fotos, declaración de propiedad en false)
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    /productos/{id}:
+        get:
+            tags: [Productos]
+            summary: Ver detalle de un producto
+            description: >
+                **Rol requerido: dueño.**
+                Solo el dueño del producto puede verlo.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            responses:
+                "200":
+                    description: Detalle del producto
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Producto"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: El producto no pertenece al dueño autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Producto no encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+    /productos/{id}/seguro:
+        get:
+            tags: [Productos]
+            summary: Ver póliza de seguro de un producto
+            description: >
+                **Rol requerido: dueño.**
+                El dueño puede ver la póliza contratada por la empresa para su artículo.
+                El cliente puede contactar a la compañía aseguradora para ampliar el monto de la póliza.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            responses:
+                "200":
+                    description: Datos de la póliza de seguro
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Seguro"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: El producto no pertenece al dueño autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Producto sin seguro asignado todavía
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+    /productos/{id}/aceptar-condiciones:
+        patch:
+            tags: [Productos]
+            summary: Aceptar o rechazar las condiciones propuestas por el subastador
+            description: >
+                **Rol requerido: dueño.**
+                Disponible solo cuando el producto está en estado "pendiente_confirmacion".
+                Si el dueño acepta, el `estadoProducto` pasa a "en_subasta".
+                Si el dueño rechaza, el `estadoProducto` vuelve a "asignado", se crea una
+                notificación `devolucion_producto` con los gastos de devolución y el
+                producto es removido del catálogo.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required: [acepta]
+                            properties:
+                                acepta:
+                                    type: boolean
+            responses:
+                "200":
+                    description: Decisión registrada. Producto actualizado.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Producto"
+                "400":
+                    description: Datos inválidos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: El producto no pertenece al dueño autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Producto no encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+                "409":
+                    description: El producto no está en estado pendiente_confirmacion
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Error"
+
+    # ============================================================
+    # CUENTAS DE COBRO — Dueño
+    # ============================================================
+    /duenio/cuentas-cobro:
+        get:
+            tags: [Cuentas de cobro]
+            summary: Listar cuentas de cobro del dueño autenticado
+            description: >
+                **Rol requerido: dueño.**
+                Las cuentas deben declararse antes del inicio de la subasta en la que
+                participa el artículo del dueño.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+            responses:
+                "200":
+                    description: Lista de cuentas de cobro
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/CuentaCobro"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: El usuario no tiene rol de dueño
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+
+        post:
+            tags: [Cuentas de cobro]
+            summary: Agregar una cuenta de cobro
+            description: >
+                **Rol requerido: dueño.**
+                Puede ser una cuenta del exterior. Se acepta moneda ARS o USD.
+            security:
+                - bearerAuth: []
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudCrearCuentaCobro"
+            responses:
+                "201":
+                    description: Cuenta de cobro creada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/CuentaCobro"
+                "400":
+                    description: Datos inválidos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: El usuario no tiene rol de dueño
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+
+    /duenio/cuentas-cobro/{id}:
+        delete:
+            tags: [Cuentas de cobro]
+            summary: Desactivar una cuenta de cobro
+            description: >
+                **Rol requerido: dueño.**
+                Marca la cuenta como inactiva. No se elimina físicamente.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            responses:
+                "204":
+                    description: Cuenta desactivada
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: La cuenta no pertenece al dueño autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Cuenta no encontrada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+    # ============================================================
+    # SUBASTAS — Comprador (lectura)
+    # ============================================================
+    /subastas:
+        get:
+            tags: [Subastas]
+            summary: Listar todas las subastas
+            description: >
+                **Rol requerido: comprador.**
+                Devuelve todas las subastas sin restricción de categoría. Cualquier comprador
+                registrado puede ver todas las subastas. La categoría solo determina si puede
+                operar (pujar, conectarse por WS) en cada una.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+                - name: estado
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      enum: [programada, abierta, cerrada]
+                - name: categoria
+                  in: query
+                  required: false
+                  description: Filtro opcional por categoría de subasta.
+                  schema:
+                      type: string
+                      enum: [comun, especial, plata, oro, platino]
+                - name: moneda
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      enum: [ARS, USD]
+            responses:
+                "200":
+                    description: Lista de subastas
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Subasta"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    /subastas/{id}:
+        get:
+            tags: [Subastas]
+            summary: Ver detalle de una subasta
+            description: >
+                **Rol requerido: comprador.**
+                Accesible para cualquier comprador registrado sin importar su categoría.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            responses:
+                "200":
+                    description: Detalle de la subasta
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Subasta"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "404":
+                    description: Subasta no encontrada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+    /subastas/{id}/catalogo:
+        get:
+            tags: [Subastas]
+            summary: Ver catálogo de una subasta
+            description: >
+                **Rol requerido: comprador.**
+                El catálogo es público, pero el precioBase de cada ítem solo se muestra
+                si el comprador está admitido (admitido = 'si').
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+            responses:
+                "200":
+                    description: Catálogo de la subasta
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        $ref: "#/components/schemas/Catalogo"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "404":
+                    description: Subasta no encontrada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+    /subastas/{id}/item-actual:
+        get:
+            tags: [Subastas]
+            summary: Ver ítem en subasta actualmente y mejor oferta
+            description: >
+                **Rol requerido: comprador.**
+                Devuelve el ítem que está siendo subastado en este momento, la mejor
+                oferta actual y los límites válidos de puja. Usar como fallback al
+                reconectarse por WebSocket para obtener el estado actual sin esperar
+                el próximo evento. La conexión WS es el canal principal de tiempo real.
+                Ver websockets.md para el flujo completo.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            responses:
+                "200":
+                    description: Ítem actual y estado de las ofertas
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/EstadoPujaActual"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "404":
+                    description: Subasta no encontrada o no está en curso
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+    # ============================================================
+    # PUJAS — Comprador
+    # ============================================================
+    /subastas/{idSubasta}/items/{idItem}/pujas:
+        get:
+            tags: [Pujas]
+            summary: Ver historial de pujas de un ítem
+            description: >
+                **Rol requerido: comprador.**
+                Devuelve todas las pujas del ítem ordenadas cronológicamente.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: idSubasta
+                  in: path
+                  required: true
+                  schema:
+                      type: integer
+                - name: idItem
+                  in: path
+                  required: true
+                  schema:
+                      type: integer
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+            responses:
+                "200":
+                    description: Historial de pujas ordenado cronológicamente
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Puja"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "404":
+                    description: Subasta o ítem no encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+        post:
+            tags: [Pujas]
+            summary: Realizar una puja
+            description: >
+                **Rol requerido: comprador.**
+                El comprador debe haberse conectado previamente a la subasta por WebSocket,
+                lo cual registra automáticamente su asistencia y le asigna un numeroPostor.
+                Sin ese registro en la tabla asistentes, el backend rechaza la puja con 403.
+
+
+                Validaciones aplicadas por el backend:
+
+                - El comprador debe tener al menos un medio de pago verificado.
+                - La categoría de la subasta debe ser menor o igual a la del comprador.
+                - El monto debe ser mayor a la última oferta más el 1% del precio base.
+                - El monto no puede superar la última oferta más el 20% del precio base,
+                  excepto en subastas de categoría oro o platino (sin límite superior).
+                - Si el medio de pago es cheque certificado, el montoDisponible debe alcanzar.
+                - El ítem debe estar activo en ese momento (es el turno de ese ítem).
+                - El backend no acepta otra puja hasta confirmar que la anterior fue registrada (409).
+                - El comprador no puede tener multas impagas.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: idSubasta
+                  in: path
+                  required: true
+                  schema:
+                      type: integer
+                - name: idItem
+                  in: path
+                  required: true
+                  schema:
+                      type: integer
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudCrearPuja"
+            responses:
+                "201":
+                    description: Puja registrada correctamente
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Puja"
+                "400":
+                    description: Monto fuera de los límites permitidos o datos inválidos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Sin medio de pago verificado, categoría insuficiente o multa impaga
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Subasta o ítem no encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+                "409":
+                    description: Hay una puja en proceso de confirmación. Intentá de nuevo en unos instantes.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Error"
+
+    # ============================================================
+    # MI ACTIVIDAD — Comprador
+    # ============================================================
+    /mi/subastas:
+        get:
+            tags: [Mi actividad]
+            summary: Subastas en las que participó el comprador autenticado
+            description: >
+                **Rol requerido: comprador.**
+                Se infiere por quién realizó pujas.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+            responses:
+                "200":
+                    description: Lista de subastas con participación del comprador
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Subasta"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    /mi/pujas:
+        get:
+            tags: [Mi actividad]
+            summary: Historial de pujas del comprador autenticado
+            description: >
+                **Rol requerido: comprador.**
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+                - name: idItem
+                  in: query
+                  required: false
+                  schema:
+                      type: integer
+                  description: Filtrar por ítem específico
+            responses:
+                "200":
+                    description: Historial de pujas
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Puja"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    /mi/compras:
+        get:
+            tags: [Mi actividad]
+            summary: Compras realizadas por el comprador autenticado
+            description: >
+                **Rol requerido: comprador.**
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+            responses:
+                "200":
+                    description: Lista de registros de compra
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/RegistroDeSubasta"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    /mi/compras/{id}:
+        patch:
+            tags: [Mi actividad]
+            summary: Indicar si se retira personalmente un artículo comprado
+            description: >
+                **Rol requerido: comprador.**
+                Permite al comprador indicar si va a retirar el artículo en persona.
+                Si `retiraPersonalmente` es true, el comprador pierde la cobertura
+                del seguro sobre ese bien. No se puede revertir una vez confirmado.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required: [retiraPersonalmente]
+                            properties:
+                                retiraPersonalmente:
+                                    type: boolean
+            responses:
+                "200":
+                    description: Registro de compra actualizado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/RegistroDeSubasta"
+                "400":
+                    description: Datos inválidos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: La compra no pertenece al comprador autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Registro de compra no encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+                "409":
+                    description: El retiro ya fue confirmado y no puede revertirse
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Error"
+
+    /mi/compras/{id}/pagar:
+        post:
+            tags: [Mi actividad]
+            summary: Pagar una compra ganada
+            description: >
+                **Rol requerido: comprador.**
+                El comprador elige el medio de pago con el que abona la compra.
+                El medio debe estar verificado, activo y pertenecer al comprador autenticado.
+                Si es cheque certificado, se descuenta del montoDisponible.
+                Al procesarse exitosamente, se marca el registro como pagado (pagado = true).
+                Si la subasta era en dólares, solo se aceptan medios de pago en USD.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudPago"
+            responses:
+                "200":
+                    description: Pago registrado correctamente
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/RegistroDeSubasta"
+                "400":
+                    description: Medio de pago inválido, inactivo o sin fondos suficientes
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: La compra no pertenece al comprador autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Registro de compra no encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+                "409":
+                    description: La compra ya fue pagada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Error"
+
+        get:
+            tags: [Mi actividad]
+            summary: Multas del comprador autenticado
+            description: >
+                **Rol requerido: comprador.**
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+            responses:
+                "200":
+                    description: Lista de multas
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Multa"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    /mi/multas/{id}/pagar:
+        post:
+            tags: [Mi actividad]
+            summary: Pagar una multa propia
+            description: >
+                **Rol requerido: comprador.**
+                El comprador elige el medio de pago con el que abona la multa.
+                El medio debe estar verificado, activo y pertenecer al comprador autenticado.
+                Si es cheque certificado, se descuenta del montoDisponible.
+                Al procesarse exitosamente, la multa queda marcada como pagada
+                y el comprador recupera el acceso a pujar en subastas.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudPago"
+            responses:
+                "200":
+                    description: Multa pagada correctamente
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Multa"
+                "400":
+                    description: Medio de pago inválido, inactivo o sin fondos suficientes
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: La multa no pertenece al comprador autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Multa no encontrada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+                "409":
+                    description: La multa ya estaba pagada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Error"
+
+    /mi/metricas:
+        get:
+            tags: [Mi actividad]
+            summary: Métricas de participación del comprador autenticado
+            description: >
+                **Rol requerido: comprador.**
+            security:
+                - bearerAuth: []
+            responses:
+                "200":
+                    description: Métricas del comprador
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/MetricasCliente"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    /mi/notificaciones:
+        get:
+            tags: [Mi actividad]
+            summary: Notificaciones del usuario autenticado
+            description: >
+                **Rol requerido: comprador o dueño.**
+                Devuelve todas las notificaciones del usuario ordenadas por fecha descendente.
+                Incluye notificaciones de compras ganadas (rol comprador) y de productos
+                vendidos, aceptados, rechazados o devueltos (rol dueño).
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+                - name: leida
+                  in: query
+                  required: false
+                  schema:
+                      type: boolean
+                  description: Filtrar por estado de lectura.
+            responses:
+                "200":
+                    description: Lista de notificaciones
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Notificacion"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    /mi/notificaciones/{id}:
+        patch:
+            tags: [Mi actividad]
+            summary: Marcar una notificación como leída
+            description: >
+                **Rol requerido: comprador o dueño.**
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required: [leida]
+                            properties:
+                                leida:
+                                    type: boolean
+            responses:
+                "200":
+                    description: Notificación actualizada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Notificacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: La notificación no pertenece al usuario autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Notificación no encontrada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+    # ============================================================
+    # SUBASTADOR
+    # ============================================================
+    /subastador/subastas:
+        get:
+            tags: [Subastador]
+            summary: Listar todas las subastas (vista subastador)
+            description: >
+                **Rol requerido: subastador.**
+                Sin restricción de categoría. Ve todas las subastas.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+                - name: estado
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      enum: [programada, abierta, cerrada]
+            responses:
+                "200":
+                    description: Lista de subastas
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Subasta"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol subastador
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+
+        post:
+            tags: [Subastador]
+            summary: Crear una subasta
+            description: >
+                **Rol requerido: subastador.**
+                La fecha debe ser al menos 10 días posterior a la creación.
+            security:
+                - bearerAuth: []
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudCrearSubasta"
+            responses:
+                "201":
+                    description: Subasta creada con estado "programada"
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Subasta"
+                "400":
+                    description: Datos inválidos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol subastador
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+
+    /subastador/subastas/{id}:
+        patch:
+            tags: [Subastador]
+            summary: Actualizar una subasta
+            description: >
+                **Rol requerido: subastador.**
+                Solo se puede modificar mientras el estado sea "programada".
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudActualizarSubasta"
+            responses:
+                "200":
+                    description: Subasta actualizada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Subasta"
+                "400":
+                    description: Datos inválidos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol subastador
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Subasta no encontrada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+                "409":
+                    description: No se puede modificar una subasta que no está en estado "programada"
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Error"
+
+    /subastador/subastas/{id}/estado:
+        patch:
+            tags: [Subastador]
+            summary: Cambiar el estado de una subasta
+            description: >
+                **Rol requerido: subastador.**
+                Permite avanzar el estado manualmente: programada → abierta → cerrada.
+                El avance automático entre ítems lo maneja el backend según duracionItemMinutos.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required: [estado]
+                            properties:
+                                estado:
+                                    type: string
+                                    enum: [abierta, cerrada]
+            responses:
+                "200":
+                    description: Estado actualizado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Subasta"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol subastador
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Subasta no encontrada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+                "409":
+                    description: Transición de estado inválida
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Error"
+
+    /subastador/subastas/{id}/registros:
+        get:
+            tags: [Subastador]
+            summary: Ver registros de venta de una subasta
+            description: >
+                **Rol requerido: subastador.**
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+            responses:
+                "200":
+                    description: Registros de venta de la subasta
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/RegistroDeSubasta"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol subastador
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Subasta no encontrada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+    /subastador/catalogos:
+        post:
+            tags: [Subastador]
+            summary: Crear un catálogo y asignarlo a una subasta
+            description: >
+                **Rol requerido: subastador.**
+                Solo el subastador asignado a la subasta puede crear su catálogo.
+            security:
+                - bearerAuth: []
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudCrearCatalogo"
+            responses:
+                "201":
+                    description: Catálogo creado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Catalogo"
+                "400":
+                    description: Datos inválidos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol subastador
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+
+    /subastador/catalogos/{id}/items:
+        post:
+            tags: [Subastador]
+            summary: Agregar un ítem al catálogo desde el pool
+            description: >
+                **Rol requerido: subastador.**
+                El producto debe estar en estado "asignado" y pertenecer al pool del subastador autenticado.
+                No se puede agregar el mismo producto dos veces al mismo catálogo.
+                Al agregarlo, el subastador define la `comision`. El precio base es el que
+                fijó el dueño al cargar el producto. El backend
+                actualiza el `estadoProducto` a "pendiente_confirmacion" y crea una notificación
+                `producto_aceptado` al dueño con la fecha, hora, lugar, precio base y comisiones
+                de la subasta. El producto no puede subastarse hasta que el dueño confirme
+                las condiciones via `PATCH /productos/{id}/aceptar-condiciones`.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudAgregarItemCatalogo"
+            responses:
+                "201":
+                    description: Ítem agregado al catálogo
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ItemCatalogo"
+                "400":
+                    description: Datos inválidos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol subastador o el producto no pertenece al pool del subastador
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Catálogo o producto no encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+                "409":
+                    description: El producto ya está en el catálogo
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Error"
+
+    /subastador/catalogos/{idCatalogo}/items/{idItem}:
+        delete:
+            tags: [Subastador]
+            summary: Quitar un ítem del catálogo
+            description: >
+                **Rol requerido: subastador.**
+                Solo es posible mientras la subasta esté en estado "programada".
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: idCatalogo
+                  in: path
+                  required: true
+                  schema:
+                      type: integer
+                - name: idItem
+                  in: path
+                  required: true
+                  schema:
+                      type: integer
+            responses:
+                "204":
+                    description: Ítem eliminado del catálogo
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol subastador
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Catálogo o ítem no encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+                "409":
+                    description: No se puede modificar el catálogo de una subasta que ya no está programada
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Error"
+
+    /subastador/productos:
+        get:
+            tags: [Subastador]
+            summary: Listar el pool de productos del subastador autenticado
+            description: >
+                **Rol requerido: subastador.**
+                Devuelve los productos asignados al subastador autenticado.
+                Los productos en estado "asignado" están disponibles para agregar a un catálogo.
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+                - name: estado
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      enum:
+                          [
+                              asignado,
+                              pendiente_confirmacion,
+                              en_subasta,
+                              vendido,
+                          ]
+            responses:
+                "200":
+                    description: Lista de productos del pool
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Producto"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol subastador
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+
+    # ============================================================
+    # EMPLEADO (admin)
+    # ============================================================
+    /admin/clientes:
+        get:
+            tags: [Empleado]
+            summary: Listar clientes
+            description: >
+                **Rol requerido: empleado.**
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+                - name: admitido
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      enum: [si, no]
+                - name: categoria
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      enum: [comun, especial, plata, oro, platino]
+            responses:
+                "200":
+                    description: Lista de clientes
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/ClienteAdmin"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol empleado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+
+    /admin/clientes/{id}:
+        get:
+            tags: [Empleado]
+            summary: Ver detalle de un cliente
+            description: >
+                **Rol requerido: empleado.**
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            responses:
+                "200":
+                    description: Detalle del cliente
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ClienteAdmin"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol empleado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Cliente no encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+        patch:
+            tags: [Empleado]
+            summary: Actualizar categoría o estado de admisión de un cliente
+            description: >
+                **Rol requerido: empleado.**
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pathId"
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudActualizarCliente"
+            responses:
+                "200":
+                    description: Cliente actualizado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ClienteAdmin"
+                "400":
+                    description: Datos inválidos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol empleado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+                "404":
+                    description: Cliente no encontrado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoEncontrado"
+
+    /admin/multas:
+        get:
+            tags: [Empleado]
+            summary: Listar todas las multas
+            description: >
+                **Rol requerido: empleado.**
+            security:
+                - bearerAuth: []
+            parameters:
+                - $ref: "#/components/parameters/pagina"
+                - $ref: "#/components/parameters/cantidad"
+                - name: pagada
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      enum: [si, no]
+            responses:
+                "200":
+                    description: Lista de multas
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    datos:
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Multa"
+                                    meta:
+                                        $ref: "#/components/schemas/MetaPaginacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol empleado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"
+
+    /admin/subastadores:
+        post:
+            tags: [Empleado]
+            summary: Crear una cuenta de subastador
+            description: >
+                **Rol requerido: empleado.**
+                Solo los empleados pueden crear cuentas de subastador.
+                Se le enviará un email al subastador para que setee su clave.
+            security:
+                - bearerAuth: []
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudCrearSubastador"
+            responses:
+                "201":
+                    description: Subastador creado correctamente
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    identificador:
+                                        type: integer
+                                    email:
+                                        type: string
+                "400":
+                    description: Datos inválidos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+                "403":
+                    description: Requiere rol empleado
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorSinPermiso"

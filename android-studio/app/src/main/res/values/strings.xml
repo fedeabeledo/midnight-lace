@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Midnight Lace</string>
+
+    <!-- Login -->
+    <string name="iniciar_sesion">Iniciar Sesion</string>
+    <string name="email">Email</string>
+    <string name="contrasena">Contraseña</string>
+    <string name="recordarme">Recordarme</string>
+    <string name="olvido_contrasena">¿Olvidaste tu contraseña?</string>
+    <string name="enviar">Enviar</string>
+    <string name="no_tenes_cuenta">¿No tenes una cuenta? </string>
+    <string name="registrate">Registrate</string>
+    <string name="credenciales_incorrectas">Credenciales incorrectas</string>
+
+    <!-- Home -->
+    <string name="subasta_destacada">Subasta </string>
+    <string name="destacada_italic">\ destacada</string>
+    <string name="ver_todas_subastas">Ver todas las subastas</string>
+    <string name="fecha_destacada">22/08/2026 · 19:30h</string>
+    <string name="lugar_destacado">Hotel Alvear Art, CABA</string>
+    <string name="piezas_destacada">3 PIEZAS · Categoría: Oro</string>
+    <string name="en_curso">en curso</string>
+    <string name="strawberry_pattern_special">Strawberry Pattern Special</string>
+
+    <!-- All Auctions -->
+    <string name="todas_las_subastas">Todas las subastas</string>
+
+    <!-- States -->
+    <string name="estado_en_curso">en curso</string>
+    <string name="estado_programada">programada</string>
+    <string name="estado_finalizada">finalizada</string>
+
+    <!-- WIP -->
+    <string name="wip_mensaje">🚧 Trabajo en progreso</string>
+
+    <!-- Auction names -->
+    <string name="subasta_gyaru">Gyaru Deluxe</string>
+    <string name="subasta_y2k">Y2K Reloaded</string>
+    <string name="subasta_sweet_dreams">Sweet Dreams</string>
+    <string name="subasta_gothic_night">Gothic Night</string>
+    <string name="subasta_strawberry_bloom">Strawberry Bloom</string>
+    <string name="subasta_visual_eclipse">Visual Eclipse</string>
+    <string name="subasta_ganguro">Ganguro Fever</string>
+    <string name="subasta_fairy_magic">Fairy Magic</string>
+
+    <!-- Auction details -->
+    <string name="gyaru_fecha">20/04/2026 · 18:30h</string>
+    <string name="gyaru_lugar">La Rural, Palermo, CABA</string>
+    <string name="gyaru_piezas">6 PIEZAS · Categoría: Especial</string>
+
+    <string name="y2k_fecha">20/04/2026 · 21:00h</string>
+    <string name="y2k_lugar">Complejo C Art Media, CABA</string>
+    <string name="y2k_piezas">8 PIEZAS · Categoría: Especial</string>
+
+    <string name="sweet_dreams_fecha">20/04/2026 · 17:00h</string>
+    <string name="sweet_dreams_lugar">Centro Cultural Recoleta, CABA</string>
+    <string name="sweet_dreams_piezas">5 PIEZAS · Categoría: Plata</string>
+
+    <string name="gothic_night_fecha">20/04/2026 · 20:00h</string>
+    <string name="gothic_night_lugar">Palacio San Miguel, CABA</string>
+    <string name="gothic_night_piezas">2 PIEZAS · Categoría: Oro</string>
+
+    <string name="strawberry_bloom_fecha">20/04/2026 · 19:30h</string>
+    <string name="strawberry_bloom_lugar">Hotel Alvear Art, CABA</string>
+    <string name="strawberry_bloom_piezas">3 PIEZAS · Categoría: Oro</string>
+
+    <string name="visual_eclipse_fecha">20/04/2026 · 21:00h</string>
+    <string name="visual_eclipse_lugar">Complejo Art Media, CABA</string>
+    <string name="visual_eclipse_piezas">5 PIEZAS · Categoría: Platino</string>
+
+    <string name="ganguro_fecha">02/09/2026 · 19:00h</string>
+    <string name="ganguro_lugar">Niceto Club, Palermo, CABA</string>
+    <string name="ganguro_piezas">7 PIEZAS · Categoría: Común</string>
+
+    <string name="fairy_magic_fecha">05/04/2026 · 16:30h</string>
+    <string name="fairy_magic_lugar">Usina del Arte, CABA</string>
+    <string name="fairy_magic_piezas">3 PIEZAS · Categoría: Plata</string>
+</resources>
