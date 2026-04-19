@@ -86,3 +86,21 @@ La puja en sí sí va por HTTP para garantizar consistencia y evitar que se pise
 Los únicos dos roles que pueden convivir en un mismo usuario son `comprador` y `duenio`, de hecho un `duenio` empieza su cuenta sí o sí siendo primero `comprador` (esto no quiere decir que está obligado a comprar algo antes de publicar).
 
 Después hay dos tipos de usuarios más `subastador` y `empleado`. Los nombres son autoexplicativos, pero me tomo el atrevimiento de aclarar que los usuarios `empleado` vendrían a ser los administradores.
+
+---
+
+## Estructura
+
+```text
+.
+├── android-studio/          # Proyecto Android Studio (solo para la primera entrega)
+├── docs/                    # Documentación y diseño
+│   ├── prototipos/          # Assets de diseño y prototipado
+│   │   ├── png/             # Pantallas en PNG
+│   │   ├── svg/             # Pantallas en SVG
+│   │   └── logo.svg         # Logo de Midnight Lace
+│   ├── schema_postgres.sql  # Esquema de la DB
+│   ├── swagger.yaml         # Documentación de la API REST
+│   └── websockets.md        # Documentación de eventos WS
+└── README.md                # Lo que estás leyendo...
+```
