@@ -17,6 +17,16 @@ Como comentaba anteriormente, la app permite tanto la venta, como la compra y se
 
 ---
 
+## Android Studio
+
+La primera entrega tiene una consigna opcional que dice de hacer alguna pantalla en Android Studio.
+
+Si bien desde el grupo decidimos que vamos a hacer el frontend con React Native, decidimos hacer la pantalla splash, login, home y todas las subastas en Android Studio solamente como una demo en la primera entrega.
+
+Para poder iniciar sesión se puede dejar el campo de correo electrónico vacío o con cualquier cadena, pero en la contraseña hay que poner `123`.
+
+---
+
 ## Stack
 
 - **Frontend:** habrá una pequeña demostración hecha en Android Studio para esta primera entrega, después se hará en **React Native**. En esta primera entrega tenemos hechos los prototipos que fueron hechos en **Figma**.
