@@ -21,11 +21,14 @@ Como comentaba anteriormente, la app permite tanto la venta, como la compra y se
 
 La primera entrega tiene una consigna opcional que dice de hacer alguna pantalla en Android Studio.
 
-Si bien desde el grupo decidimos que vamos a hacer el frontend con React Native, decidimos hacer la pantalla splash, login, home y todas las subastas en Android Studio solamente como una demo en la primera entrega.
+Si bien desde el grupo decidimos que vamos a hacer el frontend con React Native, vamos a hacer la pantalla splash, login, home y todas las subastas en Android Studio solamente como una demo en la primera entrega.
 
-Para que Android Studio reconozca el proyecto fácilmente se recomienda abrir la carpeta `android-studio` en el programa, no desde la raíz de este repositorio.
+Para que Android Studio reconozca el proyecto fácilmente se recomienda abrir el misml desde la carpeta `android-studio`, no desde la raíz de este repositorio.
 
-Para poder iniciar sesión se puede dejar el campo de correo electrónico vacío o con cualquier cadena, pero en la contraseña hay que poner `123`.
+En el inicio de sesión definimos un usuario de prueba:
+
+- **Correo**: puede estar vacío o ser cualquier cadena, se ignora en esta demo.
+- **Contraseña:** `123`
 
 ---
 
