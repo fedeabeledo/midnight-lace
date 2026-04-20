@@ -23,6 +23,8 @@ La primera entrega tiene una consigna opcional que dice de hacer alguna pantalla
 
 Si bien desde el grupo decidimos que vamos a hacer el frontend con React Native, decidimos hacer la pantalla splash, login, home y todas las subastas en Android Studio solamente como una demo en la primera entrega.
 
+Para que Android Studio reconozca el proyecto fácilmente se recomienda abrir la carpeta `android-studio` en el programa, no desde la raíz de este repositorio.
+
 Para poder iniciar sesión se puede dejar el campo de correo electrónico vacío o con cualquier cadena, pero en la contraseña hay que poner `123`.
 
 ---
