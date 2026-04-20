@@ -2613,6 +2613,7 @@ paths:
                             schema:
                                 $ref: "#/components/schemas/Error"
 
+    /mi/multas:
         get:
             tags: [Mi actividad]
             summary: Multas del comprador autenticado
