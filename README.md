@@ -17,7 +17,9 @@ Como comentaba anteriormente, la app permite tanto la venta, como la compra y se
 
 ---
 
-## Android Studio
+## Primera entrega
+
+### Android Studio
 
 La primera entrega tiene una consigna opcional que dice de hacer alguna pantalla en Android Studio.
 
@@ -29,6 +31,10 @@ En el inicio de sesión definimos un usuario de prueba:
 
 - **Correo**: puede estar vacío o ser cualquier cadena, se ignora en esta demo.
 - **Contraseña:** `123`
+
+### Figma
+
+[Prototipos en Figma](https://www.figma.com/design/WuXJ8AHPSEns9h0Z2qBCTX/Untitled?node-id=0-1&t=1tXUKikKLjJHXSZn-1)
 
 ---
 
