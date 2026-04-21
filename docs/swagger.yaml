@@ -325,6 +325,28 @@ components:
         # --------------------------------------------------------
         # AUTH
         # --------------------------------------------------------
+        SolicitudCambiarClave:
+            type: object
+            required: [claveActual, claveNueva]
+            properties:
+                claveActual:
+                    type: string
+                    format: password
+                claveNueva:
+                    type: string
+                    format: password
+                    minLength: 8
+                    example: "NuevaLolitaFashion456!"
+
+        SolicitudRecuperarClave:
+            type: object
+            required: [email]
+            properties:
+                email:
+                    type: string
+                    format: email
+                    example: "dunechka@email.com"
+
         SolicitudRegistro:
             type: object
             required:
@@ -1491,6 +1513,65 @@ paths:
                         application/json:
                             schema:
                                 $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    /auth/cambiar-clave:
+        post:
+            tags: [Autenticación]
+            summary: Cambiar contraseña conociendo la actual
+            description: >
+                **Rol requerido: comprador, dueño, subastador o empleado.**
+                El usuario debe proveer su contraseña actual para poder establecer una nueva.
+                Invalida todos los tokens de renovación activos del usuario al completarse.
+            security:
+                - bearerAuth: []
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudCambiarClave"
+            responses:
+                "204":
+                    description: Contraseña cambiada correctamente. Tokens previos invalidados.
+                "400":
+                    description: La nueva clave no cumple los requisitos
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorValidacion"
+                "401":
+                    description: No autenticado o contraseña actual incorrecta
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorNoAutenticado"
+
+    /auth/recuperar-clave:
+        post:
+            tags: [Autenticación]
+            summary: Solicitar recuperación de contraseña por olvido
+            description: >
+                **Público.**
+                El usuario ingresa su email y el sistema le envía un token temporal,
+                idéntico al del paso 2 del registro. Con ese token puede usar
+                POST /auth/confirmar para establecer una nueva clave.
+                La respuesta es siempre la misma independientemente de si el email
+                existe, para evitar enumeración de usuarios.
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/SolicitudRecuperarClave"
+            responses:
+                "202":
+                    description: >
+                        Solicitud recibida. Si el email corresponde a una cuenta activa,
+                        se enviará un mensaje con instrucciones.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/RespuestaRegistro"
 
     # ============================================================
     # PAISES — Públicos (auxiliar para poblar selects)
