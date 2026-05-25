@@ -146,7 +146,7 @@ async def verificar_cliente(db: AsyncSession, persona_id: int) -> str | None:
 async def confirmar_cuenta(
     db: AsyncSession, token: str, clave: str
 ) -> dict | None:
-    """Confirma la cuenta y devuelve tokens."""
+    """Confirma la cuenta (registro inicial o recuperacion de clave)."""
     try:
         payload = decode_token(token)
     except Exception:
@@ -157,15 +157,19 @@ async def confirmar_cuenta(
 
     persona_id = int(payload.get("sub"))
     persona = await db.get(Persona, persona_id)
-    if persona is None or persona.estado != "pendiente":
+    if persona is None:
         return None
 
-    cliente = await db.get(Cliente, persona_id)
-    if cliente is None or cliente.admitido != "si":
+    if persona.estado == "pendiente":
+        cliente = await db.get(Cliente, persona_id)
+        if cliente is None or cliente.admitido != "si":
+            return None
+        persona.estado = "activo"
+
+    elif persona.estado != "activo":
         return None
 
     persona.hash_contrasenia = hash_password(clave)
-    persona.estado = "activo"
     await db.commit()
 
     return await _build_login_response(db, persona_id, persona.email, persona.nombre)
