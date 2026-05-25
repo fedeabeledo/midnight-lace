@@ -8,6 +8,13 @@ captures/
 .externalNativeBuild/
 .cxx/
 
+# Python / Backend
+__pycache__/
+*.pyc
+venv/
+.env
+uploads/
+
 # OS
 .DS_Store
 Thumbs.db
