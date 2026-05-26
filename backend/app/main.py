@@ -20,11 +20,13 @@ def create_app() -> FastAPI:
 
     register_error_handlers(app)
 
-    from app.routers import auth, interno, paises
+    from app.routers import auth, interno, medios_pago, paises, perfil
 
     app.include_router(auth.router)
     app.include_router(interno.router)
     app.include_router(paises.router)
+    app.include_router(perfil.router)
+    app.include_router(medios_pago.router)
 
     @app.get("/health")
     async def health():
