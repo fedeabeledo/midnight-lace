@@ -26,7 +26,7 @@ class Producto(Base):
     )
     fecha_ingreso: Mapped[date] = mapped_column("fechaIngreso", Date, nullable=False, default=date.today)
     estado_producto: Mapped[str] = mapped_column(
-        "estadoProducto", String(15), nullable=False, default="pendiente"
+        "estadoProducto", String(25), nullable=False, default="pendiente"
     )
     subastador_asignado: Mapped[int | None] = mapped_column(
         "subastadorAsignado", Integer, ForeignKey("subastadores.identificador"), nullable=True

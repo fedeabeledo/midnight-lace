@@ -1,14 +1,18 @@
 import asyncio
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
+from app.core.security import hash_password
 from app.models import (
     Cliente,
+    Deposito,
     Empleado,
     Pais,
     Persona,
+    Seguro,
+    Subastador,
 )
 
 
@@ -91,8 +95,60 @@ async def seed():
         # Resetear secuencia de personas después de insertar ID 1 manualmente
         await db.execute(text("SELECT setval('personas_identificador_seq', GREATEST(1, (SELECT COALESCE(MAX(identificador), 0) FROM personas)))"))
 
+        await db.flush()
+
+        # Subastador de prueba (para que verificacion-producto tenga a quien asignar)
+        existe_sub = await db.scalar(select(Persona).where(Persona.email == "subastador@midnightlace.com"))
+        if existe_sub is None:
+            db.add(Persona(
+                documento="11111111",
+                nombre="Martillero",
+                apellido="Público",
+                email="subastador@midnightlace.com",
+                nombre_usuario="subastador_ml",
+                direccion="Corrientes",
+                altura="800",
+                localidad="CABA",
+                ciudad="CABA",
+                url_foto_doc_frente="n/a",
+                url_foto_doc_dorso="n/a",
+                estado="activo",
+                hash_contrasenia=hash_password("sub123"),
+            ))
+            await db.flush()
+            sub_persona = await db.scalar(select(Persona).where(Persona.email == "subastador@midnightlace.com"))
+            db.add(Subastador(identificador=sub_persona.identificador, matricula="ML-001", region="CABA"))
+            await db.flush()
+
+        # Depósitos
+        depos = await db.scalar(text("SELECT COUNT(*) FROM depositos"))
+        if depos == 0:
+            db.add_all([
+                Deposito(nombre="Depósito Central", direccion="Av. Rivadavia 1500, CABA"),
+                Deposito(nombre="Depósito Norte", direccion="Panamericana Km 35, Pilar"),
+                Deposito(nombre="Depósito Sur", direccion="Av. Calchaquí 4500, Quilmes"),
+                Deposito(nombre="Depósito Oeste", direccion="Ruta 7 Km 22, Luján"),
+                Deposito(nombre="Depósito Puerto", direccion="Av. España 1200, Puerto Madero"),
+            ])
+            await db.flush()
+
+        # Seguros (pólizas disponibles)
+        segs = await db.scalar(text("SELECT COUNT(*) FROM seguros"))
+        if segs == 0:
+            db.add_all([
+                Seguro(nro_poliza="POL-2026-001", compania="La Segunda Seguros", poliza_combinada="si", importe=500000),
+                Seguro(nro_poliza="POL-2026-002", compania="Sancor Seguros", poliza_combinada="no", importe=750000),
+                Seguro(nro_poliza="POL-2026-003", compania="Federación Patronal", poliza_combinada="si", importe=300000),
+                Seguro(nro_poliza="POL-2026-004", compania="Zurich Seguros", poliza_combinada="no", importe=1000000),
+                Seguro(nro_poliza="POL-2026-005", compania="Mapfre Seguros", poliza_combinada="si", importe=450000),
+                Seguro(nro_poliza="POL-2026-006", compania="Allianz Seguros", poliza_combinada="no", importe=600000),
+                Seguro(nro_poliza="POL-2026-007", compania="Galeno Seguros", poliza_combinada="si", importe=850000),
+                Seguro(nro_poliza="POL-2026-008", compania="Prudential Seguros", poliza_combinada="no", importe=400000),
+            ])
+            await db.flush()
+
         await db.commit()
-        print("Seed completado: 30 países + usuario Midnight Lace.")
+        print("Seed completado: 30 países + Midnight Lace + subastador + 5 depósitos + 8 seguros.")
 
 
 if __name__ == "__main__":

@@ -4,12 +4,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.services import auth as auth_service
+from app.services import productos as productos_service
 
 router = APIRouter(prefix="/v1/interno", tags=["Interno"])
 
 
 class SolicitudVerificacion(BaseModel):
     email: EmailStr
+
+
+class SolicitudVerificacionProducto(BaseModel):
+    id_producto: int
 
 
 @router.post("/verificacion-cliente")
@@ -47,3 +52,17 @@ async def verificacion_cliente(
             "aprobado": False,
             "mensaje": "Cliente rechazado. Se envió email de notificación.",
         }
+
+
+@router.post("/verificacion-producto")
+async def verificacion_producto(
+    body: SolicitudVerificacionProducto,
+    db: AsyncSession = Depends(get_db),
+):
+    resultado = await productos_service.verificar_producto(db, body.id_producto)
+    if resultado is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"codigo": "ERROR_VALIDACION", "mensaje": "Producto no encontrado o ya verificado."},
+        )
+    return {"estado": resultado}
