@@ -1,8 +1,12 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from fastapi.security import APIKeyHeader
 
+from app.core.api_key_middleware import ApiKeyMiddleware
 from app.core.errors import register_error_handlers
+
+api_key_header = APIKeyHeader(name="X-Api-Key", auto_error=False)
 
 
 @asynccontextmanager
@@ -16,7 +20,11 @@ def create_app() -> FastAPI:
         version="1.0.0",
         description="API REST para Midnight Lace — casa de subastas de vestidos EGL.",
         lifespan=lifespan,
+        swagger_ui_parameters={"persistAuthorization": True},
+        dependencies=[Depends(api_key_header)],
     )
+
+    app.add_middleware(ApiKeyMiddleware)
 
     register_error_handlers(app)
 
