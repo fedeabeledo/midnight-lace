@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.ws_manager import ws_manager
 from app.dependencies import require_role
 from app.schemas.pujas import (
     EstadoPujaActualResponse,
@@ -37,7 +38,7 @@ async def crear_puja(
     user: dict = Depends(require_role("comprador")),
     db: AsyncSession = Depends(get_db),
 ):
-    return await pujas_service.crear_puja(
+    resultado = await pujas_service.crear_puja(
         db,
         idSubasta,
         idItem,
@@ -45,6 +46,15 @@ async def crear_puja(
         body.importe,
         body.id_medio_de_pago,
     )
+
+    broadcast_data = resultado.pop("_broadcast", None)
+    if broadcast_data:
+        await ws_manager.broadcast(idSubasta, {
+            "evento": "nuevaPuja",
+            "datos": broadcast_data,
+        })
+
+    return resultado
 
 
 @router.get("/{id}/item-actual", response_model=EstadoPujaActualResponse)

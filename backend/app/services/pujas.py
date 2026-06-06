@@ -206,7 +206,13 @@ async def crear_puja(
     await db.commit()
     await db.refresh(puja)
 
-    # 13. Enriquecer respuesta
+    # 13. Calcular nuevos límites para broadcast
+    nueva_puja_minima = importe + (precio_base * Decimal("0.01"))
+    nueva_puja_maxima = None
+    if subasta.categoria in ["comun", "especial", "plata"]:
+        nueva_puja_maxima = importe + (precio_base * Decimal("0.20"))
+
+    # 14. Enriquecer respuesta
     producto = await db.get(Producto, item.producto)
 
     return {
@@ -226,6 +232,12 @@ async def crear_puja(
         "producto": {
             "identificador": producto.identificador if producto else None,
             "descripcionCatalogo": producto.descripcion_catalogo if producto else None,
+        },
+        "_broadcast": {
+            "idItem": item_id,
+            "importe": str(puja.importe),
+            "pujaMinima": str(nueva_puja_minima),
+            "pujaMaxima": str(nueva_puja_maxima) if nueva_puja_maxima else None,
         },
     }
 

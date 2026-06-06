@@ -1,12 +1,10 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
-from fastapi.security import APIKeyHeader
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.api_key_middleware import ApiKeyMiddleware
 from app.core.errors import register_error_handlers
-
-api_key_header = APIKeyHeader(name="X-Api-Key", auto_error=False)
 
 
 @asynccontextmanager
@@ -21,14 +19,20 @@ def create_app() -> FastAPI:
         description="API REST para Midnight Lace — casa de subastas de vestidos EGL.",
         lifespan=lifespan,
         swagger_ui_parameters={"persistAuthorization": True},
-        dependencies=[Depends(api_key_header)],
     )
 
     app.add_middleware(ApiKeyMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     register_error_handlers(app)
 
-    from app.routers import auth, interno, medios_pago, paises, perfil, productos, pujas, subastas, subastador
+    from app.routers import auth, interno, medios_pago, paises, perfil, productos, pujas, subastas, subastador, ws
 
     app.include_router(auth.router)
     app.include_router(interno.router)
@@ -39,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(pujas.router)
     app.include_router(subastas.router)
     app.include_router(subastador.router)
+    app.include_router(ws.router)
 
     @app.get("/health")
     async def health():

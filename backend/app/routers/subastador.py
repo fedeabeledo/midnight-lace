@@ -14,6 +14,7 @@ from app.schemas.subastas import (
     SubastaResponse,
 )
 from app.services import subastas as subastas_service
+from app.services import ws as ws_service
 
 router = APIRouter(prefix="/v1/subastador", tags=["Subastador"])
 
@@ -83,6 +84,10 @@ async def cambiar_estado(
         raise HTTPException(status_code=409, detail={"codigo": "TRANSICION_INVALIDA", "mensaje": str(e)})
     if result is None:
         raise HTTPException(status_code=404, detail={"codigo": "NO_ENCONTRADO", "mensaje": "Subasta no encontrada."})
+
+    if body.estado == "abierta":
+        await ws_service.iniciar_primer_item(db, id)
+
     return result
 
 

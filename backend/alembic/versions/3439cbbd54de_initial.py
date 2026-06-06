@@ -205,7 +205,7 @@ def upgrade() -> None:
         sa.Column('seguro', sa.String(length=30), nullable=True),
         sa.Column('declaracionPropiedad', sa.Boolean(), nullable=False),
         sa.Column('fechaIngreso', sa.Date(), nullable=False),
-        sa.Column('estadoProducto', sa.String(length=15), nullable=False),
+        sa.Column('estadoProducto', sa.String(length=25), nullable=False),
         sa.Column('subastadorAsignado', sa.Integer(), nullable=True),
         sa.Column('deposito', sa.Integer(), nullable=True),
         sa.ForeignKeyConstraint(['deposito'], ['depositos.identificador']),
