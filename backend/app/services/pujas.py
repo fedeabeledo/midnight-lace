@@ -1,4 +1,5 @@
 import math
+from datetime import timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -384,7 +385,6 @@ async def item_actual(db: AsyncSession, subasta_id: int) -> dict:
     # Calcular finalizaEn (por ahora null, se implementa con WebSockets)
     finaliza_en = None
     if item.iniciado_en and subasta.duracion_item_minutos:
-        from datetime import timedelta
         finaliza_en = item.iniciado_en + timedelta(minutes=subasta.duracion_item_minutos)
 
     return {

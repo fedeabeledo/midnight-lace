@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -69,7 +68,7 @@ def create_app() -> FastAPI:
     app.openapi = custom_openapi
 
     @app.get("/health")
-    async def health():
+    async def estado():
         return {"status": "ok"}
 
     return app

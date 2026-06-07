@@ -127,31 +127,28 @@ async def send_email(to: str, tipo: str, codigo: str | None = None, motivo: str 
     - "recuperacion": email con código de recuperación
     - "rechazo": email de rechazo (requiere motivo)
 
-    Siempre imprime en consola (para dev/testing).
+    Siempre loguea en consola (para dev/testing).
     Retorna True si se envió OK, False si falló.
-    Si SMTP no está configurado, solo imprime en consola y retorna True.
+    Si SMTP no está configurado, solo loguea y retorna True.
     """
-    if tipo == "registro" or tipo == "recuperacion":
-        print(f"[EMAIL] {tipo.upper()} → {to}: código={codigo}")
+    if tipo in ("registro", "recuperacion"):
+        logger.info(f"[EMAIL] {tipo.upper()} → {to}: código={codigo}")
     elif tipo == "rechazo":
-        print(f"[EMAIL] {tipo.upper()} → {to}: motivo={motivo}")
+        logger.info(f"[EMAIL] {tipo.upper()} → {to}: motivo={motivo}")
 
     if not settings.smtp_host:
-        print(f"[EMAIL] SMTP no configurado. Email no enviado (solo log).")
+        logger.info("[EMAIL] SMTP no configurado. Email no enviado (solo log).")
         return True
 
     try:
         msg = _build_email(to, tipo, codigo=codigo, motivo=motivo)
         ok, err = await asyncio.to_thread(_send_smtp_sync, msg)
         if ok:
-            print(f"[EMAIL] {tipo.upper()} → {to}: enviado OK")
-            logger.info(f"Email {tipo} enviado a {to}")
+            logger.info(f"[EMAIL] {tipo.upper()} → {to}: enviado OK")
             return True
         else:
-            print(f"[EMAIL] {tipo.upper()} → {to}: ERROR {err}")
-            logger.error(f"Error enviando email {tipo} a {to}: {err}")
+            logger.error(f"[EMAIL] {tipo.upper()} → {to}: ERROR {err}")
             return False
     except Exception as e:
-        print(f"[EMAIL] {tipo.upper()} → {to}: EXCEPTION {e}")
-        logger.exception(f"Excepción enviando email {tipo} a {to}")
+        logger.exception(f"[EMAIL] {tipo.upper()} → {to}: EXCEPTION {e}")
         return False

@@ -3,7 +3,6 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://midnightlace:midnightlace@localhost:5432/midnightlace"
-    # TODO: Cambiar esto por variables de entorno para mayor seguridad
     jwt_secret: str = "SECRETO_ULTRA_SEGURO"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30

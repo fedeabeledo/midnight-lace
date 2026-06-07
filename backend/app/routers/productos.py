@@ -1,4 +1,6 @@
 import json
+import logging
+import time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +11,8 @@ from app.models import Duenio
 from app.schemas.productos import ProductoResponse, SeguroResponse, SolicitudAceptarCondiciones
 from app.services import productos as productos_service
 from app.services.auth import save_upload
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/productos", tags=["Productos"])
 
@@ -43,7 +47,6 @@ async def crear_producto(
             detail={"codigo": "ERROR_VALIDACION", "mensaje": "El precio base debe ser mayor a 0.01."},
         )
 
-    # Crear duenio si no existe (primer producto)
     duenio = await db.get(Duenio, user["identificador"])
     if duenio is None:
         duenio = Duenio(
@@ -53,8 +56,6 @@ async def crear_producto(
         db.add(duenio)
         await db.flush()
 
-    # Guardar fotos
-    import time
     ts = int(time.time())
     fotos_urls = []
     for i, f in enumerate([foto1, foto2, foto3, foto4, foto5, foto6, foto7, foto8], start=1):
@@ -63,7 +64,6 @@ async def crear_producto(
             url = save_upload(content, f"producto_{user['identificador']}_{ts}_{i}.jpg")
             fotos_urls.append(url)
 
-    # Parsear opcionales
     detalle_data = None
     if detallesArtisticos:
         try:
@@ -89,14 +89,12 @@ async def crear_producto(
         componentes=componentes_data,
     )
 
-    # Verificación automática
     resultado = await productos_service.verificar_producto(db, producto["identificador"])
     if resultado == "asignado":
-        print(f"[PRODUCTO] Producto {producto['identificador']} del dueño {user['identificador']} APROBADO y asignado.")
+        logger.info(f"[PRODUCTO] Producto {producto['identificador']} del dueño {user['identificador']} APROBADO y asignado.")
     elif resultado == "rechazado":
-        print(f"[PRODUCTO] Producto {producto['identificador']} del dueño {user['identificador']} RECHAZADO.")
+        logger.info(f"[PRODUCTO] Producto {producto['identificador']} del dueño {user['identificador']} RECHAZADO.")
 
-    # Refrescar datos post-verificación
     producto = await productos_service.get_producto(db, producto["identificador"], user["identificador"])
     return producto
 

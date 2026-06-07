@@ -1,7 +1,4 @@
-import math
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -51,21 +48,16 @@ async def desactivar_medio(
         )
 
 
-class VerificarBody(BaseModel):
-    pass
-
-
 @router.post("/{id}/verificar")
 async def verificar_medio(
     id: int,
-    body: VerificarBody,
     user: dict = Depends(require_role("empleado")),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await medios_service.verificar_medio(db, id, user["identificador"])
-    if result is None:
+    resultado = await medios_service.verificar_medio(db, id, user["identificador"])
+    if resultado is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"codigo": "NO_ENCONTRADO", "mensaje": "Medio de pago no encontrado."},
         )
-    return result
+    return resultado

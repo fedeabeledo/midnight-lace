@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import (
@@ -59,15 +59,15 @@ async def registrar_comprador(
         return None  # evitar enumeración de usuarios
 
     url_frente = save_upload(
-        foto_doc_frente, f"{email}_frente_{datetime.utcnow().timestamp():.0f}.jpg"
+        foto_doc_frente, f"{email}_frente_{datetime.now(timezone.utc).timestamp():.0f}.jpg"
     )
     url_dorso = save_upload(
-        foto_doc_dorso, f"{email}_dorso_{datetime.utcnow().timestamp():.0f}.jpg"
+        foto_doc_dorso, f"{email}_dorso_{datetime.now(timezone.utc).timestamp():.0f}.jpg"
     )
     url_perfil = None
     if foto_perfil:
         url_perfil = save_upload(
-            foto_perfil, f"{email}_perfil_{datetime.utcnow().timestamp():.0f}.jpg"
+            foto_perfil, f"{email}_perfil_{datetime.now(timezone.utc).timestamp():.0f}.jpg"
         )
 
     persona = Persona(
@@ -118,8 +118,6 @@ def _generar_codigo() -> str:
 
 
 async def _crear_codigo(db: AsyncSession, persona_id: int, tipo: str) -> str:
-    from sqlalchemy import update
-
     await db.execute(
         update(CodigoVerificacion)
         .where(
@@ -238,7 +236,6 @@ async def confirmar_cuenta(
 
     persona.hash_contrasenia = hash_password(clave)
 
-    from sqlalchemy import update
     await db.execute(
         update(CodigoVerificacion)
         .where(

@@ -55,8 +55,8 @@ async def get_current_user(
 
     user_id = int(sub)
 
-    result = await db.execute(select(Persona).where(Persona.identificador == user_id))
-    persona = result.scalar_one_or_none()
+    resultado = await db.execute(select(Persona).where(Persona.identificador == user_id))
+    persona = resultado.scalar_one_or_none()
     if persona is None or persona.estado != "activo":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

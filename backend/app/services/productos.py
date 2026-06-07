@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 import random
 from datetime import date
@@ -7,7 +8,6 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import async_session
 from app.models import (
     Producto,
     Foto,
@@ -19,6 +19,8 @@ from app.models import (
     Seguro,
     Notificacion,
 )
+
+logger = logging.getLogger(__name__)
 
 MOTIVOS_RECHAZO = [
     "Documentación incompleta o ilegible.",
@@ -119,7 +121,7 @@ async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
         producto.estado_producto = "asignado"
         await db.commit()
 
-        print(f"[VERIFICACION] Producto {producto_id} APROBADO — seguro: {producto.seguro}, depósito: {producto.deposito}")
+        logger.info(f"[VERIFICACION] Producto {producto_id} APROBADO — seguro: {producto.seguro}, depósito: {producto.deposito}")
         return "asignado"
     else:
         producto.estado_producto = "rechazado"
@@ -133,7 +135,7 @@ async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
         ))
         await db.commit()
 
-        print(f"[VERIFICACION] Producto {producto_id} RECHAZADO — motivo: {motivo}")
+        logger.info(f"[VERIFICACION] Producto {producto_id} RECHAZADO — motivo: {motivo}")
         return "rechazado"
 
 
