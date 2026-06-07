@@ -181,7 +181,7 @@ async def verificar_cliente(db: AsyncSession, persona_id: int) -> dict:
 
         codigo = await _crear_codigo(db, persona_id, "registro")
         await db.commit()
-        return {"aprobado": True, "codigo": codigo}
+        return {"aprobado": True, "codigo": codigo, "categoria": categoria}
     else:
         cliente.admitido = "no"
         cliente.categoria = "comun"
@@ -191,7 +191,7 @@ async def verificar_cliente(db: AsyncSession, persona_id: int) -> dict:
             persona.estado = "inactivo"
 
         await db.commit()
-        return {"aprobado": False, "codigo": None}
+        return {"aprobado": False, "codigo": None, "categoria": "comun"}
 
 
 async def confirmar_cuenta(

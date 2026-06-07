@@ -70,10 +70,11 @@ async def registro(
     verificacion = await auth_service.verificar_cliente(db, result)
     aprobado = verificacion["aprobado"]
     codigo = verificacion["codigo"]
+    categoria = verificacion["categoria"]
 
     if aprobado:
         await email_service.send_email(email, "registro", codigo=codigo)
-        mensaje = "Fuiste aceptado. Revisá tu email para obtener el código de confirmación."
+        mensaje = f"Fuiste aceptado con categoría {categoria}. Revisá tu email para obtener el código de confirmación."
     else:
         await email_service.send_email(email, "rechazo", motivo="Tu solicitud no cumple con los requisitos de verificación.")
         mensaje = "Tu solicitud fue rechazada. Contactanos a soporte@midnightlace.com para más información."
@@ -82,6 +83,7 @@ async def registro(
         aprobado=aprobado,
         mensaje=mensaje,
         email=email,
+        categoria=categoria,
     )
 
 

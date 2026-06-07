@@ -19,6 +19,7 @@ class RespuestaRegistro(BaseModel):
     aprobado: bool
     mensaje: str
     email: EmailStr | None = None
+    categoria: str | None = None
 
 
 class SolicitudConfirmarCuenta(BaseModel):
