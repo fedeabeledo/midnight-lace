@@ -50,14 +50,15 @@ async def verificacion_cliente(
             detail={"codigo": "YA_VERIFICADO", "mensaje": "Este cliente ya fue verificado anteriormente."},
         )
 
-    token = await auth_service.verificar_cliente(db, persona_id)
-    if token is not None:
-        print(f"[VERIFICACION] Cliente {persona_id} APROBADO. Token: {token}")
-        print(f"[VERIFICACION] → Enviar email a {body.email} con link: http://localhost:8000/confirmar?token={token}")
+    resultado = await auth_service.verificar_cliente(db, persona_id)
+    if resultado["aprobado"]:
+        codigo = resultado["codigo"]
+        print(f"[VERIFICACION] Cliente {persona_id} APROBADO. Código: {codigo}")
+        print(f"[VERIFICACION] → Enviar email a {body.email} con código: {codigo}")
         return {
             "aprobado": True,
-            "token_confirmacion": token,
-            "mensaje": "Cliente aprobado. Se envió email con link para setear clave.",
+            "codigo_confirmacion": codigo,
+            "mensaje": "Cliente aprobado. Se envió email con código para setear clave.",
         }
     else:
         print(f"[VERIFICACION] Cliente {persona_id} RECHAZADO.")

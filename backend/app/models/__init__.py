@@ -14,6 +14,7 @@ from app.models.registro_subasta import RegistroDeSubasta
 from app.models.cuentas_cobro import CuentaCobro
 from app.models.notificaciones import Notificacion
 from app.models.multas import Multa
+from app.models.codigos_verificacion import CodigoVerificacion
 
 __all__ = [
     "Pais",
@@ -42,4 +43,5 @@ __all__ = [
     "CuentaCobro",
     "Notificacion",
     "Multa",
+    "CodigoVerificacion",
 ]

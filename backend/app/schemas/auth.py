@@ -16,18 +16,35 @@ class SolicitudRegistro(BaseModel):
 
 
 class RespuestaRegistro(BaseModel):
-    mensaje: str = "Solicitud recibida. Si los datos son válidos, recibirás un email para completar el registro."
+    aprobado: bool
+    mensaje: str
+    email: EmailStr | None = None
 
 
 class SolicitudConfirmarCuenta(BaseModel):
-    token: str
+    codigo: str = Field(min_length=6, max_length=6)
     clave: str
+    tipo: str = "registro"
+
+    @field_validator("codigo")
+    @classmethod
+    def codigo_solo_numeros(cls, v: str) -> str:
+        if not v.isdigit():
+            raise ValueError("El código debe contener solo dígitos.")
+        return v
 
     @field_validator("clave")
     @classmethod
     def clave_min_length(cls, v: str) -> str:
         if len(v) < 8:
             raise ValueError("La clave debe tener al menos 8 caracteres.")
+        return v
+
+    @field_validator("tipo")
+    @classmethod
+    def tipo_valido(cls, v: str) -> str:
+        if v not in ("registro", "recuperacion"):
+            raise ValueError("Tipo debe ser 'registro' o 'recuperacion'.")
         return v
 
 
@@ -65,3 +82,19 @@ class SolicitudCambiarClave(BaseModel):
 
 class SolicitudRecuperarClave(BaseModel):
     email: EmailStr
+
+
+class SolicitudReenviarCodigo(BaseModel):
+    email: EmailStr
+    tipo: str = Field(default="registro")
+
+    @field_validator("tipo")
+    @classmethod
+    def tipo_valido(cls, v: str) -> str:
+        if v not in ("registro", "recuperacion"):
+            raise ValueError("Tipo debe ser 'registro' o 'recuperacion'.")
+        return v
+
+
+class RespuestaSolicitudCodigo(BaseModel):
+    mensaje: str

@@ -6,11 +6,13 @@ from app.dependencies import get_current_user
 from app.schemas.auth import (
     RespuestaLogin,
     RespuestaRegistro,
+    RespuestaSolicitudCodigo,
     SolicitudCambiarClave,
     SolicitudConfirmarCuenta,
     SolicitudLogin,
     SolicitudRecuperarClave,
     SolicitudRenovarToken,
+    SolicitudReenviarCodigo,
 )
 from app.services import auth as auth_service
 
@@ -20,7 +22,7 @@ router = APIRouter(prefix="/v1/auth", tags=["Autenticación"])
 @router.post(
     "/registro",
     response_model=RespuestaRegistro,
-    status_code=status.HTTP_202_ACCEPTED,
+    status_code=status.HTTP_200_OK,
 )
 async def registro(
     documento: str = Form(...),
@@ -57,16 +59,29 @@ async def registro(
         foto_perfil=await fotoPerfil.read() if fotoPerfil else None,
     )
 
-    if result is not None:
-        token = await auth_service.verificar_cliente(db, result)
-        if token is not None:
-            print(f"[REGISTRO] Cliente {result} ({email}) APROBADO automáticamente.")
-            print(f"[REGISTRO] → Enviar email a {email} con link: http://localhost:8000/confirmar?token={token}")
-        else:
-            print(f"[REGISTRO] Cliente {result} ({email}) RECHAZADO automáticamente.")
-            print(f"[REGISTRO] → Enviar email a {email} notificando el rechazo.")
+    if result is None:
+        return RespuestaRegistro(
+            aprobado=False,
+            mensaje="Los datos no son válidos o el email/usuario ya está registrado.",
+            email=None,
+        )
 
-    return RespuestaRegistro()
+    verificacion = await auth_service.verificar_cliente(db, result)
+    aprobado = verificacion["aprobado"]
+    codigo = verificacion["codigo"]
+
+    if aprobado:
+        mensaje = "Fuiste aceptado. Revisá tu email para obtener el código de confirmación."
+        print(f"[REGISTRO] Cliente {result} ({email}) APROBADO. Código: {codigo}")
+    else:
+        mensaje = "Tu solicitud fue rechazada. Contactanos a soporte@midnightlace.com para más información."
+        print(f"[REGISTRO] Cliente {result} ({email}) RECHAZADO.")
+
+    return RespuestaRegistro(
+        aprobado=aprobado,
+        mensaje=mensaje,
+        email=email,
+    )
 
 
 @router.post(
@@ -74,12 +89,19 @@ async def registro(
     response_model=RespuestaLogin,
     responses={
         400: {
-            "description": "Token inválido o expirado",
+            "description": "Código inválido, usado o expirado",
             "content": {
                 "application/json": {
-                    "example": {
-                        "codigo": "TOKEN_INVALIDO",
-                        "mensaje": "Token inválido o expirado.",
+                    "examples": {
+                        "CODIGO_INVALIDO": {
+                            "value": {"codigo": "CODIGO_INVALIDO", "mensaje": "El código es incorrecto."}
+                        },
+                        "CODIGO_USADO": {
+                            "value": {"codigo": "CODIGO_USADO", "mensaje": "Este código ya fue utilizado."}
+                        },
+                        "CODIGO_EXPIRADO": {
+                            "value": {"codigo": "CODIGO_EXPIRADO", "mensaje": "El código expiró. Solicitá uno nuevo."}
+                        },
                     }
                 }
             },
@@ -90,15 +112,34 @@ async def confirmar(
     body: SolicitudConfirmarCuenta,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await auth_service.confirmar_cuenta(db, body.token, body.clave)
+    """Confirma registro (tipo='registro') o recuperación de clave (tipo='recuperacion')."""
+    result = await auth_service.confirmar_cuenta(db, body.codigo, body.clave, body.tipo)
+
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "codigo": "TOKEN_INVALIDO",
-                "mensaje": "Token inválido o expirado.",
+                "codigo": "CODIGO_INVALIDO",
+                "mensaje": "El código es incorrecto.",
             },
         )
+
+    if "error" in result:
+        mensajes = {
+            "CODIGO_INVALIDO": "El código es incorrecto.",
+            "CODIGO_USADO": "Este código ya fue utilizado.",
+            "CODIGO_EXPIRADO": "El código expiró. Solicitá uno nuevo.",
+            "CLIENTE_NO_ADMITIDO": "Tu solicitud no fue aprobada.",
+            "CLIENTE_INACTIVO": "Tu cuenta está inactiva.",
+        }
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "codigo": result["error"],
+                "mensaje": mensajes.get(result["error"], "Error desconocido."),
+            },
+        )
+
     return result
 
 
@@ -203,12 +244,58 @@ async def cambiar_clave(
 
 @router.post(
     "/recuperar-clave",
-    response_model=RespuestaRegistro,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def recuperar_clave(
     body: SolicitudRecuperarClave,
     db: AsyncSession = Depends(get_db),
 ):
+    """Envía código de recuperación por email. Siempre retorna 202 para evitar enumeración."""
     await auth_service.recuperar_clave(db, body.email)
-    return RespuestaRegistro()
+    return {
+        "mensaje": "Si el email existe, recibirás un código de recuperación."
+    }
+
+
+@router.post(
+    "/reenviar-codigo",
+    responses={
+        429: {
+            "description": "Rate limit excedido",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "codigo": "RATE_LIMIT",
+                        "mensaje": "Debés esperar 45 segundos antes de pedir un nuevo código.",
+                        "segundosRestantes": 45,
+                    }
+                }
+            },
+        }
+    },
+)
+async def reenviar_codigo(
+    body: SolicitudReenviarCodigo,
+    db: AsyncSession = Depends(get_db),
+):
+    """Reenvía código de verificación (registro o recuperación)."""
+    resultado = await auth_service.reenviar_codigo(db, body.email, body.tipo)
+
+    if not resultado["existe"]:
+        return {
+            "mensaje": "Si el email existe, recibirás un nuevo código."
+        }
+
+    if resultado["rate_limit"]:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "codigo": "RATE_LIMIT",
+                "mensaje": f"Debés esperar {resultado['segundos_restantes']} segundos antes de pedir un nuevo código.",
+                "segundosRestantes": resultado["segundos_restantes"],
+            },
+        )
+
+    return {
+        "mensaje": "Si el email existe, recibirás un nuevo código."
+    }

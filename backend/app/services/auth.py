@@ -15,9 +15,13 @@ from app.core.security import (
     verify_password,
 )
 from app.models import Cliente, Duenio, Empleado, Subastador, Persona
+from app.models.codigos_verificacion import CodigoVerificacion
 
 UPLOADS_DIR = Path("uploads")
 UPLOADS_DIR.mkdir(exist_ok=True)
+
+CODIGO_EXPIRACION_MINUTOS = 15
+CODIGO_REENVIO_MINIMO_SEGUNDOS = 60
 
 
 def save_upload(file_data: bytes, filename: str, subdir: str = "fotos") -> str:
@@ -108,13 +112,59 @@ async def cliente_ya_verificado(db: AsyncSession, persona_id: int) -> bool:
     return cliente.admitido is not None
 
 
-async def verificar_cliente(db: AsyncSession, persona_id: int) -> str | None:
-    """Verificación aleatoria. Retorna token de confirmación si aprobado, None si rechazado."""
+def _generar_codigo() -> str:
+    return f"{random.randint(0, 999999):06d}"
+
+
+async def _crear_codigo(db: AsyncSession, persona_id: int, tipo: str) -> str:
+    from sqlalchemy import update
+
+    await db.execute(
+        update(CodigoVerificacion)
+        .where(
+            CodigoVerificacion.persona == persona_id,
+            CodigoVerificacion.tipo == tipo,
+            CodigoVerificacion.usado == "no",
+        )
+        .values(usado="si")
+    )
+
+    codigo = _generar_codigo()
+    ahora = datetime.now(timezone.utc)
+    codigo_row = CodigoVerificacion(
+        persona=persona_id,
+        codigo=codigo,
+        tipo=tipo,
+        creado_en=ahora,
+        expira_en=ahora + timedelta(minutes=CODIGO_EXPIRACION_MINUTOS),
+        usado="no",
+    )
+    db.add(codigo_row)
+    await db.commit()
+    return codigo
+
+
+async def _obtener_codigo_valido(
+    db: AsyncSession, persona_id: int, codigo: str, tipo: str
+) -> CodigoVerificacion | None:
+    ahora = datetime.now(timezone.utc)
+    return await db.scalar(
+        select(CodigoVerificacion).where(
+            CodigoVerificacion.persona == persona_id,
+            CodigoVerificacion.codigo == codigo,
+            CodigoVerificacion.tipo == tipo,
+            CodigoVerificacion.usado == "no",
+            CodigoVerificacion.expira_en > ahora,
+        )
+    )
+
+
+async def verificar_cliente(db: AsyncSession, persona_id: int) -> dict:
+    """Verificación aleatoria. Retorna dict con aprobado y codigo si aprobado."""
     cliente = await db.get(Cliente, persona_id)
     if cliente is None:
         raise ValueError("Cliente no encontrado.")
 
-    # Random approval (70% chance)
     aprobado = random.random() < 0.70
 
     if aprobado:
@@ -124,13 +174,9 @@ async def verificar_cliente(db: AsyncSession, persona_id: int) -> str | None:
         cliente.admitido = "si"
         cliente.categoria = categoria
 
-        token = create_access_token(
-            {"sub": persona_id, "type": "confirmation"},
-            expires_delta=timedelta(hours=24),
-            token_type="confirmation",
-        )
+        codigo = await _crear_codigo(db, persona_id, "registro")
         await db.commit()
-        return token
+        return {"aprobado": True, "codigo": codigo}
     else:
         cliente.admitido = "no"
         cliente.categoria = "comun"
@@ -140,39 +186,65 @@ async def verificar_cliente(db: AsyncSession, persona_id: int) -> str | None:
             persona.estado = "inactivo"
 
         await db.commit()
-        return None
+        return {"aprobado": False, "codigo": None}
 
 
 async def confirmar_cuenta(
-    db: AsyncSession, token: str, clave: str
+    db: AsyncSession, codigo: str, clave: str, tipo: str
 ) -> dict | None:
-    """Confirma la cuenta (registro inicial o recuperacion de clave)."""
-    try:
-        payload = decode_token(token)
-    except Exception:
-        return None
+    """Confirma registro (tipo='registro') o recuperacion de clave (tipo='recuperacion')."""
+    codigo_row = await db.scalar(
+        select(CodigoVerificacion).where(
+            CodigoVerificacion.codigo == codigo,
+            CodigoVerificacion.tipo == tipo,
+        )
+    )
 
-    if payload.get("type") != "confirmation":
-        return None
+    if codigo_row is None:
+        return {"error": "CODIGO_INVALIDO"}
 
-    persona_id = int(payload.get("sub"))
-    persona = await db.get(Persona, persona_id)
+    ahora = datetime.now(timezone.utc)
+
+    if codigo_row.usado == "si":
+        return {"error": "CODIGO_USADO"}
+
+    if codigo_row.expira_en < ahora:
+        return {"error": "CODIGO_EXPIRADO"}
+
+    persona = await db.get(Persona, codigo_row.persona)
     if persona is None:
-        return None
+        return {"error": "CODIGO_INVALIDO"}
 
-    if persona.estado == "pendiente":
-        cliente = await db.get(Cliente, persona_id)
-        if cliente is None or cliente.admitido != "si":
-            return None
-        persona.estado = "activo"
+    codigo_row.usado = "si"
 
-    elif persona.estado != "activo":
-        return None
+    if tipo == "registro":
+        if persona.estado == "pendiente":
+            cliente = await db.get(Cliente, persona.identificador)
+            if cliente is None or cliente.admitido != "si":
+                return {"error": "CLIENTE_NO_ADMITIDO"}
+            persona.estado = "activo"
+        elif persona.estado != "activo":
+            return {"error": "CLIENTE_INACTIVO"}
+    else:  # recuperacion
+        if persona.estado != "activo":
+            return {"error": "CLIENTE_INACTIVO"}
 
     persona.hash_contrasenia = hash_password(clave)
+
+    from sqlalchemy import update
+    await db.execute(
+        update(CodigoVerificacion)
+        .where(
+            CodigoVerificacion.persona == persona.identificador,
+            CodigoVerificacion.tipo == tipo,
+            CodigoVerificacion.usado == "no",
+        )
+        .values(usado="si")
+    )
+
     await db.commit()
 
-    return await _build_login_response(db, persona_id, persona.email, persona.nombre)
+    return await _build_login_response(db, persona.identificador, persona.email, persona.nombre)
 
 
 async def login(db: AsyncSession, email: str, clave: str) -> dict | None:
@@ -219,19 +291,41 @@ async def cambiar_clave(db: AsyncSession, persona_id: int, clave_actual: str, cl
     return True
 
 
-async def recuperar_clave(db: AsyncSession, email: str):
-    """Siempre retorna success para evitar enumeración de usuarios."""
+async def recuperar_clave(db: AsyncSession, email: str) -> bool:
+    """Genera código de recuperación si el email existe. Retorna False si no existe."""
     persona = await db.scalar(select(Persona).where(Persona.email == email))
-    if persona is not None:
-        # En producción: enviar email con token de confirmación
-        token = create_access_token(
-            {"sub": persona.identificador},
-            expires_delta=timedelta(hours=1),
-            token_type="confirmation",
+    if persona is None or persona.estado != "activo":
+        return False
+
+    codigo = await _crear_codigo(db, persona.identificador, "recuperacion")
+    print(f"[RECUPERAR CLAVE] Código para {email}: {codigo}")
+    return True
+
+
+async def reenviar_codigo(db: AsyncSession, email: str, tipo: str) -> dict:
+    """Reenvía código. Retorna dict con info de rate limit."""
+    persona = await db.scalar(select(Persona).where(Persona.email == email))
+
+    if persona is None:
+        return {"existe": False, "rate_limit": False}
+
+    ahora = datetime.now(timezone.utc)
+    ultimo_codigo = await db.scalar(
+        select(CodigoVerificacion)
+        .where(
+            CodigoVerificacion.persona == persona.identificador,
+            CodigoVerificacion.tipo == tipo,
         )
-        # Log para testing
-        print(f"[RECUPERAR CLAVE] Token para {email}: {token}")
-    # Siempre 202
+        .order_by(CodigoVerificacion.creado_en.desc())
+    )
+
+    if ultimo_codigo and (ahora - ultimo_codigo.creado_en).total_seconds() < CODIGO_REENVIO_MINIMO_SEGUNDOS:
+        segundos_restantes = CODIGO_REENVIO_MINIMO_SEGUNDOS - int((ahora - ultimo_codigo.creado_en).total_seconds())
+        return {"existe": True, "rate_limit": True, "segundos_restantes": segundos_restantes}
+
+    nuevo_codigo = await _crear_codigo(db, persona.identificador, tipo)
+    print(f"[REENVIAR CODIGO] Nuevo código para {email} ({tipo}): {nuevo_codigo}")
+    return {"existe": True, "rate_limit": False}
 
 
 async def _build_login_response(
