@@ -15,6 +15,7 @@ from app.schemas.auth import (
     SolicitudReenviarCodigo,
 )
 from app.services import auth as auth_service
+from app.services import email as email_service
 
 router = APIRouter(prefix="/v1/auth", tags=["Autenticación"])
 
@@ -71,11 +72,11 @@ async def registro(
     codigo = verificacion["codigo"]
 
     if aprobado:
+        await email_service.send_email(email, "registro", codigo=codigo)
         mensaje = "Fuiste aceptado. Revisá tu email para obtener el código de confirmación."
-        print(f"[REGISTRO] Cliente {result} ({email}) APROBADO. Código: {codigo}")
     else:
+        await email_service.send_email(email, "rechazo", motivo="Tu solicitud no cumple con los requisitos de verificación.")
         mensaje = "Tu solicitud fue rechazada. Contactanos a soporte@midnightlace.com para más información."
-        print(f"[REGISTRO] Cliente {result} ({email}) RECHAZADO.")
 
     return RespuestaRegistro(
         aprobado=aprobado,

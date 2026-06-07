@@ -16,6 +16,7 @@ from app.core.security import (
 )
 from app.models import Cliente, Duenio, Empleado, Subastador, Persona
 from app.models.codigos_verificacion import CodigoVerificacion
+from app.services import email as email_service
 
 UPLOADS_DIR = Path("uploads")
 UPLOADS_DIR.mkdir(exist_ok=True)
@@ -298,7 +299,7 @@ async def recuperar_clave(db: AsyncSession, email: str) -> bool:
         return False
 
     codigo = await _crear_codigo(db, persona.identificador, "recuperacion")
-    print(f"[RECUPERAR CLAVE] Código para {email}: {codigo}")
+    await email_service.send_email(email, "recuperacion", codigo=codigo)
     return True
 
 
@@ -324,7 +325,7 @@ async def reenviar_codigo(db: AsyncSession, email: str, tipo: str) -> dict:
         return {"existe": True, "rate_limit": True, "segundos_restantes": segundos_restantes}
 
     nuevo_codigo = await _crear_codigo(db, persona.identificador, tipo)
-    print(f"[REENVIAR CODIGO] Nuevo código para {email} ({tipo}): {nuevo_codigo}")
+    await email_service.send_email(email, tipo, codigo=nuevo_codigo)
     return {"existe": True, "rate_limit": False}
 
 

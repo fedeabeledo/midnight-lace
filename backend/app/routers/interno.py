@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.ws_manager import ws_manager
 from app.services import auth as auth_service
+from app.services import email as email_service
 from app.services import productos as productos_service
 from app.services import ws as ws_service
 
@@ -53,16 +54,14 @@ async def verificacion_cliente(
     resultado = await auth_service.verificar_cliente(db, persona_id)
     if resultado["aprobado"]:
         codigo = resultado["codigo"]
-        print(f"[VERIFICACION] Cliente {persona_id} APROBADO. Código: {codigo}")
-        print(f"[VERIFICACION] → Enviar email a {body.email} con código: {codigo}")
+        await email_service.send_email(body.email, "registro", codigo=codigo)
         return {
             "aprobado": True,
             "codigo_confirmacion": codigo,
             "mensaje": "Cliente aprobado. Se envió email con código para setear clave.",
         }
     else:
-        print(f"[VERIFICACION] Cliente {persona_id} RECHAZADO.")
-        print(f"[VERIFICACION] → Enviar email a {body.email} notificando el rechazo.")
+        await email_service.send_email(body.email, "rechazo", motivo="Tu solicitud no cumple con los requisitos de verificación.")
         return {
             "aprobado": False,
             "mensaje": "Cliente rechazado. Se envió email de notificación.",

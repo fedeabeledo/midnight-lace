@@ -10,6 +10,14 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     api_key: str = ""
 
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "noreply@midnightlace.com"
+    smtp_from_name: str = "Midnight Lace"
+    smtp_use_tls: bool = True
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
