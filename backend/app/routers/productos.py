@@ -21,9 +21,9 @@ router = APIRouter(prefix="/v1/productos", tags=["Productos"])
 async def crear_producto(
     user: dict = Depends(require_role("comprador")),
     db: AsyncSession = Depends(get_db),
-    descripcionCompleta: str = Form(...),
+    descripcionCompleta: str = Form(..., max_length=2000),
     declaracionPropiedad: bool = Form(...),
-    precioBase: float = Form(...),
+    precioBase: float = Form(..., gt=0.01),
     foto1: UploadFile = File(...),
     foto2: UploadFile = File(...),
     foto3: UploadFile = File(...),

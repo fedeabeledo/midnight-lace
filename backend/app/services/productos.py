@@ -158,9 +158,24 @@ async def listar_productos_duenio(
     )
     productos = result.scalars().all()
 
+    if not productos:
+        return {
+            "datos": [],
+            "meta": {"pagina": pagina, "cantidad": cantidad, "total": total, "total_paginas": total_paginas},
+        }
+
+    producto_ids = [p.identificador for p in productos]
+    fotos_result = await db.execute(
+        select(Foto).where(
+            Foto.producto.in_(producto_ids),
+            Foto.orden == 1,
+        )
+    )
+    fotos_por_producto = {f.producto: f.foto for f in fotos_result.scalars().all()}
+
     datos = []
     for p in productos:
-        datos.append(await _serializar_producto(db, p))
+        datos.append(_serializar_producto_lista(p, fotos_por_producto.get(p.identificador)))
 
     return {
         "datos": datos,
@@ -310,4 +325,18 @@ async def _serializar_producto(db: AsyncSession, producto: Producto) -> dict:
         "seguro": seguro_data,
         "deposito": deposito_data,
         "motivoRechazo": motivo_rechazo,
+    }
+
+
+def _serializar_producto_lista(producto: Producto, foto_principal: str | None) -> dict:
+    return {
+        "identificador": producto.identificador,
+        "fecha": producto.fecha,
+        "disponible": producto.disponible,
+        "descripcionCatalogo": producto.descripcion_catalogo,
+        "descripcionCompleta": producto.descripcion_completa,
+        "precioBase": str(producto.precio_base),
+        "estadoProducto": producto.estado_producto,
+        "declaracionPropiedad": producto.declaracion_propiedad,
+        "fotoPrincipal": foto_principal,
     }

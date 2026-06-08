@@ -49,7 +49,7 @@ class ProductoResponse(BaseModel):
     fecha: date | None = None
     disponible: str | None = None
     descripcion_catalogo: str | None = Field(None, alias="descripcionCatalogo")
-    descripcion_completa: str = Field(alias="descripcionCompleta")
+    descripcion_completa: str = Field(alias="descripcionCompleta", max_length=2000)
     precio_base: str = Field(alias="precioBase")
     estado_producto: str = Field(alias="estadoProducto")
     declaracion_propiedad: bool = Field(alias="declaracionPropiedad")
