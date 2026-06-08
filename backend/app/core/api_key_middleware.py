@@ -7,6 +7,7 @@ from starlette.responses import JSONResponse
 from app.core.config import settings
 
 EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+EXEMPT_PREFIXES = ("/uploads/",)
 
 
 class ApiKeyMiddleware(BaseHTTPMiddleware):
@@ -14,7 +15,8 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
         if not settings.api_key:
             return await call_next(request)
 
-        if request.url.path in EXEMPT_PATHS:
+        path = request.url.path
+        if path in EXEMPT_PATHS or any(path.startswith(p) for p in EXEMPT_PREFIXES):
             return await call_next(request)
 
         api_key = request.headers.get("X-Api-Key", "")
