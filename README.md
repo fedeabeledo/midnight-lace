@@ -7,7 +7,7 @@ Una obra del **Grupo 1**:
 - Novello, Victoria Abril
 - Romero, Mailén Belén
 
-**Frontend:** [MidnightLace-frontend](../MidnightLace-frontend)
+**Frontend:** [MidnightLace-frontend](https://github.com/vickylinda/MidnightLace-frontend)
 
 ---
 
