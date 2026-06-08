@@ -7,6 +7,8 @@ Una obra del **Grupo 1**:
 - Novello, Victoria Abril
 - Romero, Mailén Belén
 
+**Frontend:** [MidnightLace-frontend](../MidnightLace-frontend)
+
 ---
 
 ## Prefacio
@@ -38,11 +40,35 @@ En el inicio de sesión definimos un usuario de prueba:
 
 ---
 
+## Segunda entrega
+
+Backend completo en FastAPI con la mayoría de los endpoints implementados. El frontend en React Native integra login, registro y gestión de productos. Ver el [repositorio del frontend](../MidnightLace-frontend) para el detalle de qué está conectado y qué no.
+
+---
+
 ## Stack
 
-- **Frontend:** habrá una pequeña demostración hecha en Android Studio para esta primera entrega, después se hará en **React Native**. En esta primera entrega tenemos hechos los prototipos que fueron hechos en **Figma**.
-- **Backend:** por definir. La API REST documentada en **Swagger**, en el archivo `swagger.yaml`. También hay un archivo `websockets.md`, donde se detallan los eventos WebSockets que tendrá la app, ya que en Swagger no se pueden documentar estos.
-- **Base de datos:** La estructura original se mantiene, solamente que fue traducida a la sintaxis de **PostgreSQL**, que es el motor que vamos a usar. También se agregaron muchos campos necesarios.
+- **Frontend:** React Native + Expo. Ver [MidnightLace-frontend](../MidnightLace-frontend).
+- **Backend:** Python, FastAPI. La API REST está documentada en Swagger (`/docs`). Los eventos WebSocket están documentados en `docs/websockets.md`.
+- **Base de datos:** PostgreSQL 16. El esquema está en `docs/schema_postgres.sql`.
+- **Archivos:** guardados en `uploads/`.
+
+---
+
+## Correr el proyecto
+
+No hay que hacer nada!!!
+
+El backend se encuentra corriendo en `midnight-lace.fedeabeledo.com`.
+
+Para acceder a cualquier endpoint hay que mandar una API key ultra secreta que no puedo decir acá...
+
+También hay dos endpoints especiales:
+
+- `/docs`: acá está la documentación autogenerada con FastAPI del backend.
+- `/logs`: acá están los logs del servidor.
+
+Para estos dos ultimos endpoints en vez de la API key se usa un usuario y contraseña (obviamente también son ultra secretos).
 
 ---
 
@@ -100,11 +126,33 @@ Después hay dos tipos de usuarios más `subastador` y `empleado`. Los nombres s
 
 ---
 
+## Estado de implementación
+
+### Implementado
+
+- Auth: registro multi-paso (datos + DNI + verificación email + contraseña), login, refresh token
+- Países
+- Perfil: lectura y edición, foto de perfil
+- Productos: CRUD del dueño, fotos, ciclo de estados
+- Métodos de pago: alta, baja, listado
+- Subastas: creación, catálogo, pujas por WebSocket
+- Subastador: pool de productos, gestión de subastas
+
+### Pendiente / parcial
+
+- Recuperar y restablecer contraseña (endpoints existen, frontend no conectado)
+- Multas (modelo existe, endpoint de pago no implementado)
+- Notificaciones (modelo existe, sin endpoints REST)
+- Historial de actividad del comprador (pujas)
+
+---
+
 ## Estructura
 
 ```text
 .
 ├── android-studio/          # Proyecto Android Studio (solo para la primera entrega)
+├── backend/                 # API en FastAPI
 ├── docs/                    # Documentación y diseño
 │   ├── prototipos/          # Assets de diseño y prototipado
 │   │   ├── png/             # Pantallas en PNG
