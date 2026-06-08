@@ -166,16 +166,21 @@ async def listar_productos_duenio(
 
     producto_ids = [p.identificador for p in productos]
     fotos_result = await db.execute(
-        select(Foto).where(
-            Foto.producto.in_(producto_ids),
-            Foto.orden == 1,
-        )
+        select(Foto).where(Foto.producto.in_(producto_ids))
     )
-    fotos_por_producto = {f.producto: f.foto for f in fotos_result.scalars().all()}
+    fotos_por_producto: dict[int, list[dict]] = {}
+    for f in fotos_result.scalars().all():
+        fotos_por_producto.setdefault(f.producto, []).append({
+            "identificador": f.identificador,
+            "foto": f.foto,
+            "orden": f.orden,
+        })
+    for fotos in fotos_por_producto.values():
+        fotos.sort(key=lambda x: x["orden"])
 
     datos = []
     for p in productos:
-        datos.append(_serializar_producto_lista(p, fotos_por_producto.get(p.identificador)))
+        datos.append(_serializar_producto_lista(p, fotos_por_producto.get(p.identificador, [])))
 
     return {
         "datos": datos,
@@ -328,7 +333,7 @@ async def _serializar_producto(db: AsyncSession, producto: Producto) -> dict:
     }
 
 
-def _serializar_producto_lista(producto: Producto, foto_principal: str | None) -> dict:
+def _serializar_producto_lista(producto: Producto, fotos: list[dict]) -> dict:
     return {
         "identificador": producto.identificador,
         "fecha": producto.fecha,
@@ -338,5 +343,5 @@ def _serializar_producto_lista(producto: Producto, foto_principal: str | None) -
         "precioBase": str(producto.precio_base),
         "estadoProducto": producto.estado_producto,
         "declaracionPropiedad": producto.declaracion_propiedad,
-        "fotoPrincipal": foto_principal,
+        "fotos": fotos,
     }
