@@ -42,13 +42,15 @@ En el inicio de sesión definimos un usuario de prueba:
 
 ## Segunda entrega
 
-Backend completo en FastAPI con la mayoría de los endpoints implementados. El frontend en React Native integra login, registro y gestión de productos. Ver el [repositorio del frontend](../MidnightLace-frontend) para el detalle de qué está conectado y qué no.
+Backend completo en FastAPI con la mayoría de los endpoints implementados. 
+
+Ver el [repositorio del frontend](https://github.com/vickylinda/MidnightLace-frontend).
 
 ---
 
 ## Stack
 
-- **Frontend:** React Native + Expo. Ver [MidnightLace-frontend](../MidnightLace-frontend).
+- **Frontend:** React Native + Expo. Ver [MidnightLace-frontend](https://github.com/vickylinda/MidnightLace-frontend).
 - **Backend:** Python, FastAPI. La API REST está documentada en Swagger (`/docs`). Los eventos WebSocket están documentados en `docs/websockets.md`.
 - **Base de datos:** PostgreSQL 16. El esquema está en `docs/schema_postgres.sql`.
 - **Archivos:** guardados en `uploads/`.
