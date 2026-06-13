@@ -109,6 +109,7 @@ backend avanza al siguiente.
         "itemActual": {
             "idItem": 43,
             "descripcionProducto": "Vestido Osaki Nana 2008",
+            "estado": "usado",
             "precioBase": 8000.0,
             "finalizaEn": "2026-09-01T15:30:00Z"
         }
@@ -122,6 +123,7 @@ backend avanza al siguiente.
 | `itemAnterior.vendido`           | boolean                      | `true` si hubo al menos una puja ganadora                               |
 | `itemActual.idItem`              | integer                      | Ítem que comienza ahora                                                 |
 | `itemActual.descripcionProducto` | string                       | Descripción breve para mostrar en pantalla                              |
+| `itemActual.estado`              | string                       | Condición física del producto: `nuevo` o `usado`                        |
 | `itemActual.precioBase`          | number                       | Precio base del nuevo ítem                                              |
 | `itemActual.finalizaEn`          | string (ISO 8601 con offset) | Momento exacto en que expira el turno del ítem. Usar para el countdown. |
 

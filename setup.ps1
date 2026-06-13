@@ -6,45 +6,38 @@ Write-Host ""
 
 # Verificar Python
 Write-Host "Verificando Python..." -ForegroundColor Yellow
-try {
-    $pythonVersion = python --version 2>&1
-    if ($pythonVersion -match "Python (\d+)\.(\d+)") {
-        $major = [int]$matches[1]
-        $minor = [int]$matches[2]
-        if ($major -ge 3 -and $minor -ge 10) {
-            Write-Host "✓ Python $major.$minor detectado" -ForegroundColor Green
-        } else {
-            Write-Host "✗ Python $major.$minor es muy viejo. Se necesita 3.10 o superior." -ForegroundColor Red
-            Write-Host "Descargar desde: https://www.python.org/downloads/" -ForegroundColor Yellow
-            exit 1
-        }
-    }
-} catch {
-    Write-Host "✗ Python no está instalado" -ForegroundColor Red
+if (-not (Get-Command py -ErrorAction SilentlyContinue)) {
+    Write-Host "✗ Python 3.12 no está instalado" -ForegroundColor Red
     Write-Host "Descargar desde: https://www.python.org/downloads/" -ForegroundColor Yellow
     exit 1
 }
 
+$pythonVersion = py -3.12 --version
+if (-not ($pythonVersion -match "Python 3\.12")) {
+    Write-Host "✗ Python 3.12 no está instalado" -ForegroundColor Red
+    Write-Host "Descargar desde: https://www.python.org/downloads/" -ForegroundColor Yellow
+    exit 1
+}
+Write-Host "✓ $pythonVersion detectado" -ForegroundColor Green
+
 # Verificar Docker
 Write-Host "Verificando Docker..." -ForegroundColor Yellow
-try {
-    $dockerVersion = docker --version 2>&1
-    Write-Host "✓ Docker detectado: $dockerVersion" -ForegroundColor Green
-} catch {
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "✗ Docker no está instalado" -ForegroundColor Red
     Write-Host "Descargar desde: https://www.docker.com/products/docker-desktop/" -ForegroundColor Yellow
     exit 1
 }
+$dockerVersion = docker --version
+Write-Host "✓ Docker detectado: $dockerVersion" -ForegroundColor Green
 
 # Verificar que Docker esté corriendo
 Write-Host "Verificando que Docker esté corriendo..." -ForegroundColor Yellow
-try {
-    docker info >$null 2>&1
-    Write-Host "✓ Docker está corriendo" -ForegroundColor Green
-} catch {
+docker info | Out-Null
+if ($LASTEXITCODE -ne 0) {
     Write-Host "✗ Docker no está corriendo. Abrir Docker Desktop y esperar a que diga 'Engine running'" -ForegroundColor Red
     exit 1
 }
+Write-Host "✓ Docker está corriendo" -ForegroundColor Green
 
 # Levantar PostgreSQL
 Write-Host ""
@@ -66,7 +59,7 @@ Set-Location backend
 # Crear entorno virtual
 Write-Host ""
 Write-Host "Creando entorno virtual..." -ForegroundColor Cyan
-python -m venv venv
+py -3.12 -m venv venv
 if ($LASTEXITCODE -ne 0) {
     Write-Host "✗ Error al crear entorno virtual" -ForegroundColor Red
     exit 1

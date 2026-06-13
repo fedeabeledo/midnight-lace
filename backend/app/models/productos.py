@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -9,6 +9,9 @@ from app.core.database import Base
 
 class Producto(Base):
     __tablename__ = "productos"
+    __table_args__ = (
+        CheckConstraint("estado IN ('nuevo', 'usado')", name="ck_productos_estado"),
+    )
 
     identificador: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     fecha: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -17,6 +20,7 @@ class Producto(Base):
         "descripcionCatalogo", String(500), nullable=True, default="No Posee"
     )
     descripcion_completa: Mapped[str] = mapped_column("descripcionCompleta", String(2000), nullable=False)
+    estado: Mapped[str] = mapped_column(String(5), nullable=False)
     precio_base: Mapped[Decimal] = mapped_column("precioBase", Numeric(18, 2), nullable=False)
     revisor: Mapped[int] = mapped_column(Integer, ForeignKey("empleados.identificador"), nullable=False)
     duenio: Mapped[int] = mapped_column(Integer, ForeignKey("duenios.identificador"), nullable=False)

@@ -80,6 +80,7 @@ class ItemCatalogoResponse(BaseModel):
     identificador: int
     id_producto: int = Field(alias="idProducto")
     descripcion_producto: str | None = Field(None, alias="descripcionProducto")
+    estado: Literal["nuevo", "usado"]
     precio_base: str | None = Field(None, alias="precioBase")
     orden: int
     comision: str

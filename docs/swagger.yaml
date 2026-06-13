@@ -709,6 +709,10 @@ components:
                     type: string
                 descripcionCompleta:
                     type: string
+                estado:
+                    type: string
+                    enum: [nuevo, usado]
+                    description: Condición física declarada al cargar el producto.
                 declaracionPropiedad:
                     type: boolean
                 idDuenio:
@@ -786,6 +790,7 @@ components:
             required:
                 [
                     descripcionCompleta,
+                    estado,
                     declaracionPropiedad,
                     precioBase,
                     foto1,
@@ -798,6 +803,9 @@ components:
             properties:
                 descripcionCompleta:
                     type: string
+                estado:
+                    type: string
+                    enum: [nuevo, usado]
                 declaracionPropiedad:
                     type: boolean
                     description: >
@@ -1040,6 +1048,9 @@ components:
                     type: integer
                 producto:
                     $ref: "#/components/schemas/Producto"
+                estado:
+                    type: string
+                    enum: [nuevo, usado]
                 orden:
                     type: integer
                 precioBase:
@@ -1125,6 +1136,10 @@ components:
                         descripcionCatalogo:
                             type: string
                             description: Descripción breve del producto para mostrar en el historial.
+                        estado:
+                            type: string
+                            enum: [nuevo, usado]
+                            description: Condición física declarada del producto.
 
         SolicitudCrearPuja:
             type: object
@@ -1144,6 +1159,9 @@ components:
                     type: integer
                 descripcionProducto:
                     type: string
+                estado:
+                    type: string
+                    enum: [nuevo, usado]
                 precioBase:
                     type: number
                 mejorOferta:

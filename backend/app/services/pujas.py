@@ -233,6 +233,7 @@ async def crear_puja(
         "producto": {
             "identificador": producto.identificador if producto else None,
             "descripcionCatalogo": producto.descripcion_catalogo if producto else None,
+            "estado": producto.estado if producto else None,
         },
         "_broadcast": {
             "idItem": item_id,
@@ -307,6 +308,7 @@ async def historial_pujas(
             "producto": {
                 "identificador": producto.identificador if producto else None,
                 "descripcionCatalogo": producto.descripcion_catalogo if producto else None,
+                "estado": producto.estado if producto else None,
             },
         })
 
@@ -390,6 +392,7 @@ async def item_actual(db: AsyncSession, subasta_id: int) -> dict:
     return {
         "idItem": item.identificador,
         "descripcionProducto": producto.descripcion_catalogo if producto else None,
+        "estado": producto.estado if producto else None,
         "precioBase": str(precio_base),
         "mejorOferta": str(ultima_oferta) if ultima_oferta > 0 else None,
         "pujaMinima": str(puja_minima),

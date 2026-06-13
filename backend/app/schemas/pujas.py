@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -27,6 +28,7 @@ class PujaResponse(BaseModel):
 class EstadoPujaActualResponse(BaseModel):
     id_item: int = Field(alias="idItem")
     descripcion_producto: str | None = Field(None, alias="descripcionProducto")
+    estado: Literal["nuevo", "usado"]
     precio_base: str = Field(alias="precioBase")
     mejor_oferta: str | None = Field(None, alias="mejorOferta")
     puja_minima: str = Field(alias="pujaMinima")

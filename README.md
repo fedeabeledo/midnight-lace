@@ -100,6 +100,8 @@ Los artículos que los dueños ofrecen para subastar siguen un ciclo de vida def
 
 `pendiente` → `asignado` → `pendiente_confirmacion` → `en_subasta` → `vendido`
 
+La condición física se informa por separado en `productos.estado` y solo admite `nuevo` o `usado`.
+
 - El precio base lo fija el dueño al cargar el artículo, no el subastador.
 - Cuando el subastador agrega el artículo a un catálogo, define la **comisión** y el dueño recibe una notificación para aceptar o rechazar las condiciones. Si rechaza, el artículo vuelve a `asignado`.
 - `rechazado` es un estado terminal que aplica solo cuando la verificación automática falla.

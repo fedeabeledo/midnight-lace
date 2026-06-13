@@ -25,7 +25,9 @@ info() {
 
 # Verificar Python
 info "Verificando Python..."
-if command -v python3 &> /dev/null; then
+if command -v python3.12 &> /dev/null; then
+    PYTHON_CMD="python3.12"
+elif command -v python3 &> /dev/null; then
     PYTHON_CMD="python3"
 elif command -v python &> /dev/null; then
     PYTHON_CMD="python"
@@ -37,10 +39,10 @@ PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | grep -oP 'Python \K[0-9]+\.[0-9]+'
 MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
 MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
 
-if [ "$MAJOR" -ge 3 ] && [ "$MINOR" -ge 10 ]; then
+if [ "$MAJOR" -eq 3 ] && [ "$MINOR" -ge 12 ]; then
     success "Python $PYTHON_VERSION detectado"
 else
-    error "Python $PYTHON_VERSION es muy viejo. Se necesita 3.10 o superior. Instalar con: sudo dnf install python3"
+    error "Python $PYTHON_VERSION es muy viejo. Se necesita 3.12 o superior. Instalar con: sudo dnf install python3.12"
 fi
 
 # Verificar Docker

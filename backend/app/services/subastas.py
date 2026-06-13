@@ -284,6 +284,7 @@ async def agregar_item_catalogo(
         "identificador": item.identificador,
         "idProducto": producto_id,
         "descripcionProducto": producto.descripcion_completa,
+        "estado": producto.estado,
         "precioBase": str(item.precio_base),
         "orden": item.orden,
         "comision": str(item.comision),
@@ -352,6 +353,7 @@ async def get_catalogo(
             "identificador": item.identificador,
             "idProducto": item.producto,
             "descripcionProducto": producto.descripcion_completa if producto else None,
+            "estado": producto.estado if producto else None,
             "precioBase": str(item.precio_base),
             "orden": item.orden,
             "comision": str(item.comision),
@@ -394,6 +396,7 @@ async def get_pool_productos(
         datos.append({
             "identificador": p.identificador,
             "descripcionCompleta": p.descripcion_completa,
+            "estado": p.estado,
             "precioBase": str(p.precio_base),
             "estadoProducto": p.estado_producto,
             "duenio": p.duenio,
