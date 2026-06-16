@@ -18,6 +18,9 @@ class Persona(Base):
     direccion: Mapped[str | None] = mapped_column(String(250), nullable=True)
     altura: Mapped[str] = mapped_column(String(10), nullable=False)
     departamento: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    codigo_postal: Mapped[str | None] = mapped_column(
+        "codigoPostal", String(20), nullable=True
+    )
     localidad: Mapped[str] = mapped_column(String(150), nullable=False)
     ciudad: Mapped[str] = mapped_column(String(150), nullable=False)
     estado: Mapped[str] = mapped_column(String(15), nullable=False, default="pendiente")

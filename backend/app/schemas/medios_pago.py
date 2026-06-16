@@ -46,7 +46,10 @@ class DetalleChequeCertificado(BaseModel):
 class SolicitudAgregarMedioDePago(BaseModel):
     tipo: Literal["cuentaBancaria", "tarjetaCredito", "chequeCertificado"]
     moneda: Literal["ARS", "USD"] = "ARS"
+    evaluar_categoria: bool = Field(True, alias="evaluarCategoria")
     detalle: dict[str, Any]
+
+    model_config = {"populate_by_name": True}
 
     @model_validator(mode="after")
     def validar_detalle_segun_tipo(self):

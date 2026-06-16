@@ -30,8 +30,37 @@ async def agregar_medio(
 ):
     detalle = body.detalle.model_dump(by_alias=False)
     return await medios_service.crear_medio(
-        db, user["identificador"], body.tipo, body.moneda, detalle
+        db,
+        user["identificador"],
+        body.tipo,
+        body.moneda,
+        detalle,
+        evaluar_categoria=body.evaluar_categoria,
     )
+
+
+@router.patch("/{id}")
+async def actualizar_medio(
+    id: int,
+    body: SolicitudAgregarMedioDePago,
+    user: dict = Depends(require_role("comprador")),
+    db: AsyncSession = Depends(get_db),
+):
+    detalle = body.detalle.model_dump(by_alias=False)
+    resultado = await medios_service.actualizar_medio(
+        db,
+        id,
+        user["identificador"],
+        body.tipo,
+        body.moneda,
+        detalle,
+    )
+    if resultado is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"codigo": "NO_ENCONTRADO", "mensaje": "Medio de pago no encontrado."},
+        )
+    return resultado
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)

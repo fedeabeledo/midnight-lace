@@ -1,15 +1,52 @@
 import math
+import logging
+import random
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
+    Cliente,
     MedioDePago,
     CuentaBancaria,
     TarjetaCredito,
     ChequeCertificado,
 )
+
+CATEGORIAS = ["comun", "especial", "plata", "oro", "platino"]
+logger = logging.getLogger(__name__)
+
+
+def _agregar_detalle(
+    db: AsyncSession,
+    medio_id: int,
+    tipo: str,
+    detalle: dict,
+) -> None:
+    if tipo == "cuentaBancaria":
+        db.add(CuentaBancaria(
+            medio_pago=medio_id,
+            nombre_banco=detalle["nombre_banco"],
+            numero_cuenta=detalle["numero_cuenta"],
+            pais=detalle.get("id_pais"),
+        ))
+    elif tipo == "tarjetaCredito":
+        db.add(TarjetaCredito(
+            medio_pago=medio_id,
+            ultimos_cuatro_digitos=detalle["ultimos_cuatro_digitos"],
+            nombre_titular=detalle["nombre_titular"],
+            fecha_vencimiento=detalle["fecha_vencimiento"],
+            red=detalle.get("red"),
+            es_internacional=detalle.get("es_internacional", "no"),
+        ))
+    elif tipo == "chequeCertificado":
+        db.add(ChequeCertificado(
+            medio_pago=medio_id,
+            monto_garantizado=detalle["monto_garantizado"],
+            monto_disponible=detalle["monto_disponible"],
+            fecha_entrega=detalle["fecha_entrega"],
+        ))
 
 
 async def listar_medios(
@@ -17,7 +54,8 @@ async def listar_medios(
 ) -> dict:
     total = await db.scalar(
         select(func.count()).select_from(MedioDePago).where(
-            MedioDePago.cliente == cliente_id
+            MedioDePago.cliente == cliente_id,
+            MedioDePago.activo == "si",
         )
     )
     total_paginas = math.ceil(total / cantidad) if total > 0 else 1
@@ -25,7 +63,10 @@ async def listar_medios(
     offset = (pagina - 1) * cantidad
     result = await db.execute(
         select(MedioDePago)
-        .where(MedioDePago.cliente == cliente_id)
+        .where(
+            MedioDePago.cliente == cliente_id,
+            MedioDePago.activo == "si",
+        )
         .order_by(MedioDePago.identificador.desc())
         .offset(offset)
         .limit(cantidad)
@@ -53,6 +94,7 @@ async def crear_medio(
     tipo: str,
     moneda: str,
     detalle: dict,
+    evaluar_categoria: bool = True,
 ) -> dict:
     medio = MedioDePago(
         cliente=cliente_id,
@@ -64,29 +106,80 @@ async def crear_medio(
     db.add(medio)
     await db.flush()
 
-    if tipo == "cuentaBancaria":
-        db.add(CuentaBancaria(
-            medio_pago=medio.identificador,
-            nombre_banco=detalle["nombre_banco"],
-            numero_cuenta=detalle["numero_cuenta"],
-            pais=detalle.get("id_pais"),
-        ))
-    elif tipo == "tarjetaCredito":
-        db.add(TarjetaCredito(
-            medio_pago=medio.identificador,
-            ultimos_cuatro_digitos=detalle["ultimos_cuatro_digitos"],
-            nombre_titular=detalle["nombre_titular"],
-            fecha_vencimiento=detalle["fecha_vencimiento"],
-            red=detalle.get("red"),
-            es_internacional=detalle.get("es_internacional", "no"),
-        ))
-    elif tipo == "chequeCertificado":
-        db.add(ChequeCertificado(
-            medio_pago=medio.identificador,
-            monto_garantizado=detalle["monto_garantizado"],
-            monto_disponible=detalle["monto_disponible"],
-            fecha_entrega=detalle["fecha_entrega"],
-        ))
+    _agregar_detalle(db, medio.identificador, tipo, detalle)
+
+    cliente = await db.get(Cliente, cliente_id)
+    categoria_anterior = cliente.categoria if cliente else None
+    categoria_actual = categoria_anterior
+    subio_categoria = False
+
+    sorteo = None
+    if cliente and evaluar_categoria:
+        categoria_normalizada = (cliente.categoria or "comun").lower()
+        try:
+            categoria_index = CATEGORIAS.index(categoria_normalizada)
+        except ValueError:
+            categoria_index = 0
+
+        if categoria_index < len(CATEGORIAS) - 1:
+            sorteo = random.random()
+        if sorteo is not None and sorteo < 0.5:
+            categoria_actual = CATEGORIAS[categoria_index + 1]
+            cliente.categoria = categoria_actual
+            subio_categoria = True
+
+    category_log = (
+        "[CATEGORIA] "
+        f"cliente={cliente_id} "
+        f"evaluar={evaluar_categoria} "
+        f"categoria_anterior={categoria_anterior} "
+        f"sorteo={f'{sorteo:.4f}' if sorteo is not None else 'no-aplica'} "
+        f"subio={subio_categoria} "
+        f"categoria_actual={categoria_actual}"
+    )
+    print(category_log, flush=True)
+    logger.info(category_log)
+
+    await db.commit()
+    respuesta = await _serializar_medio(db, medio)
+    respuesta.update({
+        "subioCategoria": subio_categoria,
+        "categoriaAnterior": categoria_anterior,
+        "categoriaActual": categoria_actual,
+    })
+    return respuesta
+
+
+async def actualizar_medio(
+    db: AsyncSession,
+    medio_id: int,
+    cliente_id: int,
+    tipo: str,
+    moneda: str,
+    detalle: dict,
+) -> dict | None:
+    medio = await db.get(MedioDePago, medio_id)
+    if (
+        medio is None
+        or medio.cliente != cliente_id
+        or medio.activo != "si"
+    ):
+        return None
+
+    await db.execute(
+        delete(CuentaBancaria).where(CuentaBancaria.medio_pago == medio_id)
+    )
+    await db.execute(
+        delete(TarjetaCredito).where(TarjetaCredito.medio_pago == medio_id)
+    )
+    await db.execute(
+        delete(ChequeCertificado).where(ChequeCertificado.medio_pago == medio_id)
+    )
+
+    medio.tipo = tipo
+    medio.moneda = moneda
+    medio.verificado = "no"
+    _agregar_detalle(db, medio_id, tipo, detalle)
 
     await db.commit()
     return await _serializar_medio(db, medio)

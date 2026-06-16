@@ -1,3 +1,6 @@
+import logging
+from time import time_ns
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +11,7 @@ from app.services import perfil as perfil_service
 from app.services.auth import save_upload
 
 router = APIRouter(prefix="/v1/perfil", tags=["Perfil"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("", response_model=PerfilResponse)
@@ -30,6 +34,7 @@ async def actualizar_perfil(
     direccion: str | None = Form(None),
     altura: str | None = Form(None),
     departamento: str | None = Form(None),
+    codigoPostal: str | None = Form(None),
     localidad: str | None = Form(None),
     ciudad: str | None = Form(None),
     idPais: int | None = Form(None),
@@ -43,6 +48,7 @@ async def actualizar_perfil(
         ("nombre", nombre), ("apellido", apellido), ("email", email),
         ("nombre_usuario", nombreUsuario), ("direccion", direccion),
         ("altura", altura), ("departamento", departamento),
+        ("codigo_postal", codigoPostal),
         ("localidad", localidad), ("ciudad", ciudad),
     ]:
         if val is not None:
@@ -50,7 +56,7 @@ async def actualizar_perfil(
 
     if fotoPerfil is not None:
         kwargs["url_foto_perfil"] = save_upload(
-            await fotoPerfil.read(), f"{user['email']}_perfil.jpg"
+            await fotoPerfil.read(), f"{user['email']}_perfil_{time_ns()}.jpg"
         )
     if fotoDocFrente is not None:
         kwargs["url_foto_doc_frente"] = save_upload(
@@ -64,4 +70,13 @@ async def actualizar_perfil(
     if idPais is not None:
         kwargs["numero_pais"] = idPais
 
-    return await perfil_service.update_perfil(db, user["identificador"], **kwargs)
+    updated_profile = await perfil_service.update_perfil(
+        db, user["identificador"], **kwargs
+    )
+    logger.info(
+        "[PERFIL] persona=%s codigo_postal_recibido=%r codigo_postal_guardado=%r",
+        user["identificador"],
+        codigoPostal,
+        updated_profile.get("codigo_postal") if updated_profile else None,
+    )
+    return updated_profile

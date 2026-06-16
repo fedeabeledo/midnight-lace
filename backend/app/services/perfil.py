@@ -26,6 +26,7 @@ async def get_perfil(db: AsyncSession, persona_id: int) -> dict | None:
         "direccion": persona.direccion,
         "altura": persona.altura,
         "departamento": persona.departamento,
+        "codigo_postal": persona.codigo_postal,
         "localidad": persona.localidad,
         "ciudad": persona.ciudad,
         "estado": persona.estado,
@@ -33,6 +34,7 @@ async def get_perfil(db: AsyncSession, persona_id: int) -> dict | None:
         "url_foto_doc_dorso": persona.url_foto_doc_dorso,
         "fecha_actualizacion_foto_dni": persona.fecha_actualizacion_foto_dni,
         "url_foto_perfil": persona.url_foto_perfil,
+        "categoria": cliente.categoria if cliente else None,
         "pais": {
             "numero": pais.numero,
             "nombre": pais.nombre,
@@ -55,7 +57,8 @@ async def update_perfil(
 
     updatable = [
         "nombre", "apellido", "email", "nombre_usuario",
-        "direccion", "altura", "departamento", "localidad", "ciudad",
+        "direccion", "altura", "departamento", "codigo_postal",
+        "localidad", "ciudad",
         "url_foto_perfil", "url_foto_doc_frente", "url_foto_doc_dorso",
     ]
     fotos_actualizadas = False
@@ -75,5 +78,6 @@ async def update_perfil(
         persona.fecha_actualizacion_foto_dni = date.today()
 
     await db.commit()
+    await db.refresh(persona)
 
     return await get_perfil(db, persona_id)

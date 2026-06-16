@@ -24,6 +24,7 @@ class PerfilResponse(BaseModel):
     direccion: str
     altura: str
     departamento: str | None = None
+    codigo_postal: str | None = Field(None, alias="codigoPostal")
     localidad: str
     ciudad: str
     estado: str
@@ -31,6 +32,7 @@ class PerfilResponse(BaseModel):
     url_foto_doc_dorso: str = Field(alias="urlFotoDocDorso")
     fecha_actualizacion_foto_dni: date = Field(alias="fechaActualizacionFotoDni")
     url_foto_perfil: str | None = Field(None, alias="urlFotoPerfil")
+    categoria: str | None = None
     pais: PaisPerfil | None = None
 
     model_config = {"from_attributes": True, "populate_by_name": True}
