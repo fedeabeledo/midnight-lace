@@ -9,6 +9,12 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+def _log_codigo_verificacion(to: str, codigo: str | None) -> None:
+    if not codigo:
+        return
+    mensaje = f"MAIL: {to} CODIGO: {codigo}"
+    print(mensaje, flush=True)
+
 
 def _build_registro_html(codigo: str) -> str:
     return f"""
@@ -132,11 +138,12 @@ async def send_email(to: str, tipo: str, codigo: str | None = None, motivo: str 
     Si SMTP no está configurado, solo loguea y retorna True.
     """
     if tipo in ("registro", "recuperacion"):
+        _log_codigo_verificacion(to, codigo)
         logger.info(f"[EMAIL] {tipo.upper()} → {to}: código={codigo}")
     elif tipo == "rechazo":
         logger.info(f"[EMAIL] {tipo.upper()} → {to}: motivo={motivo}")
 
-    if not settings.smtp_host:
+    if not settings.smtp_host or not settings.smtp_user or not settings.smtp_password:
         logger.info("[EMAIL] SMTP no configurado. Email no enviado (solo log).")
         return True
 
