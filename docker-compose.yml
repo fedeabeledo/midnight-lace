@@ -5,8 +5,6 @@ services:
       POSTGRES_USER: midnightlace
       POSTGRES_PASSWORD: midnightlace
       POSTGRES_DB: midnightlace
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -42,8 +40,8 @@ services:
   pgadmin:
     image: dpage/pgadmin4:latest
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@midnightlace.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-midnightlace}
+      PGADMIN_DEFAULT_EMAIL: ml@ml.com
+      PGADMIN_DEFAULT_PASSWORD: senseijr69
     ports:
       - "5050:80"
     depends_on:
