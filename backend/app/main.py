@@ -35,7 +35,7 @@ def create_app() -> FastAPI:
 
     register_error_handlers(app)
 
-    from app.routers import auth, interno, medios_pago, paises, perfil, productos, pujas, subastas, subastador, ws
+    from app.routers import auth, interno, medios_pago, mi_actividad, paises, perfil, productos, pujas, subastas, subastador, ws
 
     app.include_router(auth.router)
     app.include_router(interno.router)
@@ -46,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(pujas.router)
     app.include_router(subastas.router)
     app.include_router(subastador.router)
+    app.include_router(mi_actividad.router)
     app.include_router(ws.router)
 
     def custom_openapi():

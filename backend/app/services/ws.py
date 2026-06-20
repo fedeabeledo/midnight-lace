@@ -125,6 +125,7 @@ async def cerrar_item(db: AsyncSession, subasta_id: int) -> list[dict]:
 
     events = []
     producto = await db.get(Producto, item.producto)
+    push_compra_ganada: tuple | None = None
 
     if ganadora:
         ganadora.ganador = "si"
@@ -132,6 +133,7 @@ async def cerrar_item(db: AsyncSession, subasta_id: int) -> list[dict]:
         asistente = await db.get(Asistente, ganadora.asistente)
         cliente_id = asistente.cliente if asistente else MIDNIGHT_LACE_ID
 
+        fecha_vencimiento = now + timedelta(hours=72)
         registro = RegistroDeSubasta(
             subasta=subasta_id,
             duenio=producto.duenio if producto else MIDNIGHT_LACE_ID,
@@ -140,8 +142,10 @@ async def cerrar_item(db: AsyncSession, subasta_id: int) -> list[dict]:
             importe=ganadora.importe,
             comision=item.comision,
             moneda=subasta.moneda,
+            fecha_vencimiento=fecha_vencimiento,
         )
         db.add(registro)
+        await db.flush()
 
         if producto:
             producto.estado_producto = "vendido"
@@ -157,6 +161,26 @@ async def cerrar_item(db: AsyncSession, subasta_id: int) -> list[dict]:
                 "idSubasta": subasta_id,
             }),
         ))
+        db.add(Notificacion(
+            persona=cliente_id,
+            tipo="compra_ganada",
+            detalle=json.dumps({
+                "idRegistroSubasta": registro.identificador,
+                "importe": str(ganadora.importe),
+                "comision": str(item.comision),
+                "costoEnvio": "0",
+                "moneda": subasta.moneda,
+                "fechaVencimiento": fecha_vencimiento.isoformat(),
+            }),
+        ))
+        push_compra_ganada = (cliente_id, {
+            "idRegistroSubasta": registro.identificador,
+            "importe": str(ganadora.importe),
+            "comision": str(item.comision),
+            "costoEnvio": "0",
+            "moneda": subasta.moneda,
+            "fechaVencimiento": fecha_vencimiento.isoformat(),
+        })
 
         events.append({
             "evento": "pujaGanadora",
@@ -224,10 +248,14 @@ async def cerrar_item(db: AsyncSession, subasta_id: int) -> list[dict]:
         })
 
         await db.commit()
+        if push_compra_ganada:
+            await ws_manager.send_to_user(push_compra_ganada[0], {"evento": "compra_ganada", "datos": push_compra_ganada[1]})
         _schedule_timer(subasta_id, subasta.duracion_item_minutos)
     else:
         subasta.estado = "cerrada"
         await db.commit()
+        if push_compra_ganada:
+            await ws_manager.send_to_user(push_compra_ganada[0], {"evento": "compra_ganada", "datos": push_compra_ganada[1]})
 
         events.append({
             "evento": "cambioItem",

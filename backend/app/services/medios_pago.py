@@ -6,12 +6,14 @@ from decimal import Decimal
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ws_manager import ws_manager
 from app.models import (
     Cliente,
     MedioDePago,
     CuentaBancaria,
     TarjetaCredito,
     ChequeCertificado,
+    Notificacion,
 )
 
 CATEGORIAS = ["comun", "especial", "plata", "oro", "platino"]
@@ -137,10 +139,13 @@ async def crear_medio(
         f"subio={subio_categoria} "
         f"categoria_actual={categoria_actual}"
     )
-    print(category_log, flush=True)
     logger.info(category_log)
 
     await db.commit()
+
+    # ponytail: siempre aprueba — cambiar a random.random() < 0.70 cuando se decida
+    await _verificar_medio_simulado(db, medio.identificador, cliente_id)
+
     respuesta = await _serializar_medio(db, medio)
     respuesta.update({
         "subioCategoria": subio_categoria,
@@ -148,6 +153,20 @@ async def crear_medio(
         "categoriaActual": categoria_actual,
     })
     return respuesta
+
+
+async def _verificar_medio_simulado(db: AsyncSession, medio_id: int, cliente_id: int) -> None:
+    import json
+    medio = await db.get(MedioDePago, medio_id)
+    if medio is None:
+        return
+    aprobado = True  # ponytail: siempre aprueba — cambiar a random.random() < 0.70 cuando se decida
+    if aprobado:
+        medio.verificado = "si"
+        datos = {"idMedio": medio_id, "tipo": medio.tipo}
+        db.add(Notificacion(persona=cliente_id, tipo="medio_verificado", detalle=json.dumps(datos)))
+        await db.commit()
+        await ws_manager.send_to_user(cliente_id, {"evento": "medio_verificado", "datos": datos})
 
 
 async def actualizar_medio(
