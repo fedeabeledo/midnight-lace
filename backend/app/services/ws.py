@@ -35,6 +35,7 @@ def _schedule_timer(subasta_id: int, duracion_minutos: int):
 
 
 async def _auto_cerrar_item(subasta_id: int):
+    ws_manager.item_timers.pop(subasta_id, None)
     try:
         async with async_session() as db:
             subasta = await db.get(Subasta, subasta_id)
@@ -191,6 +192,9 @@ async def cerrar_item(db: AsyncSession, subasta_id: int) -> list[dict]:
             },
         })
     else:
+        if producto:
+            producto.estado_producto = "asignado"
+
         db.add(RegistroDeSubasta(
             subasta=subasta_id,
             duenio=producto.duenio if producto else MIDNIGHT_LACE_ID,
