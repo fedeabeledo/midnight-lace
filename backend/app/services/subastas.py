@@ -176,14 +176,17 @@ async def get_registros(
     )
     registros = result.scalars().all()
 
+    MIDNIGHT_LACE_ID = 1
     datos = []
     for r in registros:
+        no_vendido = (r.cliente == MIDNIGHT_LACE_ID and r.importe == Decimal("0"))
         datos.append({
             "identificador": r.identificador,
             "idSubasta": r.subasta,
             "idDuenio": r.duenio,
             "idProducto": r.producto,
-            "idCliente": r.cliente,
+            "idCliente": None if no_vendido else r.cliente,
+            "vendido": not no_vendido,
             "importe": str(r.importe),
             "comision": str(r.comision),
             "costoEnvio": str(r.costo_envio),

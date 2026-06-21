@@ -11,11 +11,15 @@ from app.core.security import create_access_token, create_refresh_token
 from app.core.ws_manager import ws_manager
 from app.models import (
     Asistente,
+    Cliente,
+    Duenio,
+    Empleado,
     Multa,
     Notificacion,
     Persona,
     Pujo,
     RegistroDeSubasta,
+    Subastador,
     Subasta,
 )
 from app.services.pagos import procesar_pago
@@ -23,6 +27,16 @@ from app.services.pagos import procesar_pago
 
 async def _token_fresco(db: AsyncSession, persona_id: int) -> dict:
     persona = await db.get(Persona, persona_id)
+    roles = []
+    if await db.scalar(select(Cliente).where(Cliente.identificador == persona_id)):
+        roles.append("comprador")
+    if await db.scalar(select(Duenio).where(Duenio.identificador == persona_id)):
+        roles.append("duenio")
+    if await db.scalar(select(Subastador).where(Subastador.identificador == persona_id)):
+        roles.append("subastador")
+    if await db.scalar(select(Empleado).where(Empleado.identificador == persona_id)):
+        roles.append("empleado")
+
     multa = await db.scalar(
         select(Multa).where(
             Multa.cliente == persona_id,
@@ -35,7 +49,7 @@ async def _token_fresco(db: AsyncSession, persona_id: int) -> dict:
         "sub": persona_id,
         "email": persona.email,
         "nombre": persona.nombre,
-        "roles": [],
+        "roles": roles,
         "multaImpaga": tiene_multa,
     })
     refresh_token = create_refresh_token({"sub": persona_id})
@@ -151,6 +165,11 @@ async def actualizar_retiro(db: AsyncSession, registro_id: int, cliente_id: int,
             status_code=status.HTTP_409_CONFLICT,
             detail={"codigo": "YA_PAGADO", "mensaje": "La compra ya está pagada."},
         )
+    if registro.retira_personalmente and not retira_personalmente:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"codigo": "RETIRO_YA_CONFIRMADO", "mensaje": "El retiro personal ya fue confirmado y no se puede revertir."},
+        )
     registro.retira_personalmente = retira_personalmente
     await db.commit()
     return _serializar_registro(registro)
@@ -181,6 +200,18 @@ async def pagar_compra(db: AsyncSession, registro_id: int, cliente_id: int, medi
         await procesar_pago(db, cliente_id, medio_id, monto, registro.moneda)
     except HTTPException as e:
         if e.detail.get("codigo") == "PUJA_CHEQUE_SIN_FONDOS":
+            multa_existente = await db.scalar(
+                select(Multa).where(Multa.registro_subasta == registro_id)
+            )
+            if multa_existente:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "codigo": "PUJA_CHEQUE_SIN_FONDOS",
+                        "mensaje": "Fondos insuficientes. Ya existe una multa para esta compra.",
+                        "idMulta": multa_existente.identificador,
+                    },
+                )
             importe_multa = registro.importe * Decimal("0.10")
             multa = Multa(
                 cliente=cliente_id,
@@ -350,6 +381,34 @@ async def marcar_leida(db: AsyncSession, notif_id: int, user_id: int, leida: boo
 
 async def verificar_vencimientos(db: AsyncSession) -> dict:
     now = datetime.now(timezone.utc)
+
+    # Generate multas for compras that expired without payment
+    exp_result = await db.execute(
+        select(RegistroDeSubasta).where(
+            RegistroDeSubasta.pagado == False,
+            RegistroDeSubasta.fecha_vencimiento < now,
+            RegistroDeSubasta.importe > 0,
+        )
+    )
+    for registro in exp_result.scalars().all():
+        existing = await db.scalar(select(Multa).where(Multa.registro_subasta == registro.identificador))
+        if existing:
+            continue
+        importe_multa = registro.importe * Decimal("0.10")
+        multa_nueva = Multa(
+            cliente=registro.cliente,
+            registro_subasta=registro.identificador,
+            importe=importe_multa,
+            pagada="no",
+            fecha_vencimiento=now + timedelta(hours=72),
+        )
+        db.add(multa_nueva)
+        await db.flush()
+        datos = {"idMulta": multa_nueva.identificador, "idRegistroSubasta": registro.identificador, "importe": str(importe_multa)}
+        db.add(Notificacion(persona=registro.cliente, tipo="multa_generada", detalle=json.dumps(datos)))
+        await ws_manager.send_to_user(registro.cliente, {"evento": "multa_generada", "datos": datos})
+    await db.commit()
+
     result = await db.execute(
         select(Multa).where(Multa.pagada == "no", Multa.fecha_vencimiento < now)
     )

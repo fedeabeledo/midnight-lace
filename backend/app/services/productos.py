@@ -94,11 +94,10 @@ async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
     aprobado = random.random() < 0.70
 
     if aprobado:
-        # Asignar subastador aleatorio
-        result = await db.execute(select(Subastador.identificador))
+        result = await db.execute(select(Subastador.identificador).order_by(Subastador.identificador))
         subastadores = [r[0] for r in result.all()]
         if subastadores:
-            producto.subastador_asignado = random.choice(subastadores)
+            producto.subastador_asignado = subastadores[0]
 
         # Asignar depósito aleatorio
         result = await db.execute(select(Deposito.identificador))
@@ -233,7 +232,14 @@ async def aceptar_condiciones(
 
     if acepta:
         producto.estado_producto = "en_subasta"
+        datos_en_subasta = {"idProducto": producto_id}
+        db.add(Notificacion(
+            persona=duenio_id,
+            tipo="producto_en_subasta",
+            detalle=json.dumps(datos_en_subasta),
+        ))
         await db.commit()
+        await ws_manager.send_to_user(duenio_id, {"evento": "producto_en_subasta", "datos": datos_en_subasta})
     else:
         item = await db.scalar(select(ItemCatalogo).where(ItemCatalogo.producto == producto_id))
         if item is not None:
