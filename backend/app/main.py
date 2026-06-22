@@ -1,4 +1,7 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -10,9 +13,34 @@ from app.core.api_key_middleware import ApiKeyMiddleware
 from app.core.errors import register_error_handlers
 
 
+logger = logging.getLogger(__name__)
+
+
+async def _cron_vencimientos() -> None:
+    from app.core.database import async_session
+    from app.services import mi_actividad as svc
+
+    while True:
+        now = datetime.now(timezone.utc)
+        next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        await asyncio.sleep((next_midnight - now).total_seconds())
+        try:
+            async with async_session() as db:
+                result = await svc.verificar_vencimientos(db)
+                logger.info("[CRON] verificar_vencimientos: %s", result)
+        except Exception as exc:
+            logger.error("[CRON] verificar_vencimientos error: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    task = asyncio.create_task(_cron_vencimientos())
     yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 
 def create_app() -> FastAPI:
@@ -35,7 +63,7 @@ def create_app() -> FastAPI:
 
     register_error_handlers(app)
 
-    from app.routers import auth, interno, medios_pago, paises, perfil, productos, pujas, subastas, subastador, ws
+    from app.routers import admin, auth, cuentas_cobro, interno, medios_pago, mi_actividad, paises, perfil, productos, pujas, subastas, subastador, ws
 
     app.include_router(auth.router)
     app.include_router(interno.router)
@@ -46,6 +74,9 @@ def create_app() -> FastAPI:
     app.include_router(pujas.router)
     app.include_router(subastas.router)
     app.include_router(subastador.router)
+    app.include_router(mi_actividad.router)
+    app.include_router(cuentas_cobro.router)
+    app.include_router(admin.router)
     app.include_router(ws.router)
 
     def custom_openapi():

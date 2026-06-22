@@ -8,7 +8,10 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ws_manager import ws_manager
 from app.models import (
+    Catalogo,
+    ItemCatalogo,
     Producto,
     Foto,
     DetalleArtistico,
@@ -18,6 +21,7 @@ from app.models import (
     Subastador,
     Seguro,
     Notificacion,
+    Subasta,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,11 +94,10 @@ async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
     aprobado = random.random() < 0.70
 
     if aprobado:
-        # Asignar subastador aleatorio
-        result = await db.execute(select(Subastador.identificador))
+        result = await db.execute(select(Subastador.identificador).order_by(Subastador.identificador))
         subastadores = [r[0] for r in result.all()]
         if subastadores:
-            producto.subastador_asignado = random.choice(subastadores)
+            producto.subastador_asignado = subastadores[0]
 
         # Asignar depósito aleatorio
         result = await db.execute(select(Deposito.identificador))
@@ -128,12 +131,14 @@ async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
         await db.flush()
 
         motivo = random.choice(MOTIVOS_RECHAZO)
+        datos_rechazo = {"idProducto": producto_id, "motivo": motivo}
         db.add(Notificacion(
             persona=producto.duenio,
             tipo="producto_rechazado",
-            detalle=json.dumps({"idProducto": producto_id, "motivo": motivo}),
+            detalle=json.dumps(datos_rechazo),
         ))
         await db.commit()
+        await ws_manager.send_to_user(producto.duenio, {"evento": "producto_rechazado", "datos": datos_rechazo})
 
         logger.info(f"[VERIFICACION] Producto {producto_id} RECHAZADO — motivo: {motivo}")
         return "rechazado"
@@ -227,16 +232,49 @@ async def aceptar_condiciones(
 
     if acepta:
         producto.estado_producto = "en_subasta"
+        datos_en_subasta = {"idProducto": producto_id}
+        db.add(Notificacion(
+            persona=duenio_id,
+            tipo="producto_en_subasta",
+            detalle=json.dumps(datos_en_subasta),
+        ))
+        await db.commit()
+        await ws_manager.send_to_user(duenio_id, {"evento": "producto_en_subasta", "datos": datos_en_subasta})
     else:
+        item = await db.scalar(select(ItemCatalogo).where(ItemCatalogo.producto == producto_id))
+        if item is not None:
+            await db.delete(item)
         producto.estado_producto = "asignado"
+        datos_devolucion = {"idProducto": producto_id}
         db.add(Notificacion(
             persona=duenio_id,
             tipo="devolucion_producto",
-            detalle=json.dumps({"idProducto": producto_id}),
+            detalle=json.dumps(datos_devolucion),
         ))
+        await db.commit()
+        await ws_manager.send_to_user(duenio_id, {"evento": "devolucion_producto", "datos": datos_devolucion})
 
-    await db.commit()
     return await _serializar_producto(db, producto)
+
+
+async def get_condiciones(db: AsyncSession, producto_id: int, duenio_id: int) -> dict | None:
+    producto = await db.get(Producto, producto_id)
+    if producto is None or producto.duenio != duenio_id:
+        return None
+    if producto.estado_producto != "pendiente_confirmacion":
+        raise ValueError("El producto no está pendiente de confirmación.")
+    item = await db.scalar(select(ItemCatalogo).where(ItemCatalogo.producto == producto_id))
+    if item is None:
+        raise ValueError("Item de catálogo no encontrado.")
+    catalogo = await db.get(Catalogo, item.catalogo)
+    subasta = await db.get(Subasta, catalogo.subasta) if catalogo else None
+    return {
+        "precioBase": str(item.precio_base),
+        "comision": str(item.comision),
+        "fecha": subasta.fecha.isoformat() if subasta and subasta.fecha else None,
+        "hora": subasta.hora.isoformat() if subasta and subasta.hora else None,
+        "lugar": subasta.ubicacion if subasta else None,
+    }
 
 
 async def _serializar_producto(db: AsyncSession, producto: Producto) -> dict:

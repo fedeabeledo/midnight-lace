@@ -6,6 +6,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ws_manager import ws_manager
 from app.models import (
     Catalogo,
     ItemCatalogo,
@@ -175,14 +176,17 @@ async def get_registros(
     )
     registros = result.scalars().all()
 
+    MIDNIGHT_LACE_ID = 1
     datos = []
     for r in registros:
+        no_vendido = (r.cliente == MIDNIGHT_LACE_ID and r.importe == Decimal("0"))
         datos.append({
             "identificador": r.identificador,
             "idSubasta": r.subasta,
             "idDuenio": r.duenio,
             "idProducto": r.producto,
-            "idCliente": r.cliente,
+            "idCliente": None if no_vendido else r.cliente,
+            "vendido": not no_vendido,
             "importe": str(r.importe),
             "comision": str(r.comision),
             "costoEnvio": str(r.costo_envio),
@@ -268,17 +272,23 @@ async def agregar_item_catalogo(
 
     producto.estado_producto = "pendiente_confirmacion"
 
+    datos_notif = {
+        "idProducto": producto_id,
+        "idCatalogo": catalogo_id,
+        "precioBase": str(producto.precio_base),
+        "comision": str(comision),
+        "fecha": subasta.fecha.isoformat() if subasta.fecha else None,
+        "hora": subasta.hora.isoformat() if subasta.hora else None,
+        "lugar": subasta.ubicacion,
+    }
     db.add(Notificacion(
         persona=producto.duenio,
         tipo="producto_aceptado",
-        detalle=json.dumps({
-            "idProducto": producto_id,
-            "idCatalogo": catalogo_id,
-            "comision": str(comision),
-        }),
+        detalle=json.dumps(datos_notif),
     ))
 
     await db.commit()
+    await ws_manager.send_to_user(producto.duenio, {"evento": "producto_aceptado", "datos": datos_notif})
 
     return {
         "identificador": item.identificador,

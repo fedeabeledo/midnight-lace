@@ -1,6 +1,7 @@
+from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -25,3 +26,5 @@ class RegistroDeSubasta(Base):
         "retiraPersonalmente", Boolean, nullable=False, default=False
     )
     pagado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    fecha_pago: Mapped[datetime | None] = mapped_column("fechaPago", DateTime(timezone=True), nullable=True)
+    fecha_vencimiento: Mapped[datetime | None] = mapped_column("fechaVencimiento", DateTime(timezone=True), nullable=True)

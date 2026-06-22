@@ -12,6 +12,7 @@ class ConnectionManager:
         self.active: dict[int, list[WebSocket]] = defaultdict(list)
         self.conn_info: dict[int, dict] = {}
         self.item_timers: dict[int, asyncio.Task] = {}
+        self.user_sockets: dict[int, list[WebSocket]] = defaultdict(list)
 
     async def connect(
         self,
@@ -69,6 +70,25 @@ class ConnectionManager:
 
     def has_connections(self, subasta_id: int) -> bool:
         return bool(self.active.get(subasta_id))
+
+    def register_user(self, ws: WebSocket, user_id: int):
+        self.user_sockets[user_id].append(ws)
+
+    def unregister_user(self, ws: WebSocket, user_id: int):
+        if ws in self.user_sockets[user_id]:
+            self.user_sockets[user_id].remove(ws)
+        if not self.user_sockets[user_id]:
+            del self.user_sockets[user_id]
+
+    async def send_to_user(self, user_id: int, message: dict):
+        dead = []
+        for ws in self.user_sockets.get(user_id, []):
+            try:
+                await ws.send_json(message)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.unregister_user(ws, user_id)
 
 
 ws_manager = ConnectionManager()

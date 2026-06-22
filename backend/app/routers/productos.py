@@ -142,6 +142,27 @@ async def ver_seguro(
     return seguro
 
 
+@router.get("/{id}/condiciones")
+async def ver_condiciones(
+    id: int,
+    user: dict = Depends(require_role("duenio")),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        condiciones = await productos_service.get_condiciones(db, id, user["identificador"])
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"codigo": "ESTADO_INVALIDO", "mensaje": str(e)},
+        )
+    if condiciones is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"codigo": "NO_ENCONTRADO", "mensaje": "Producto no encontrado."},
+        )
+    return condiciones
+
+
 @router.patch("/{id}/aceptar-condiciones", response_model=ProductoResponse)
 async def aceptar_condiciones(
     id: int,

@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
@@ -6,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import decode_token
 from app.models import Cliente, Duenio, Empleado, Subastador
+from app.models.multas import Multa
 from app.models.personas import Persona
 
 security_scheme = HTTPBearer(auto_error=False)
@@ -63,6 +66,24 @@ async def get_current_user(
             detail={
                 "codigo": "NO_AUTENTICADO",
                 "mensaje": "Usuario no encontrado o inactivo.",
+            },
+        )
+
+    multa_vencida = await db.scalar(
+        select(Multa).where(
+            Multa.cliente == user_id,
+            Multa.pagada == "no",
+            Multa.fecha_vencimiento < datetime.now(timezone.utc),
+        )
+    )
+    if multa_vencida:
+        persona.estado = "inactivo"
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "codigo": "CUENTA_BLOQUEADA",
+                "mensaje": "Tu cuenta fue bloqueada por multa impaga vencida.",
             },
         )
 
