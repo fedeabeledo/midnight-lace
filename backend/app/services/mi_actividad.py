@@ -305,6 +305,12 @@ async def pagar_multa(db: AsyncSession, multa_id: int, cliente_id: int, medio_id
 
 
 async def obtener_metricas(db: AsyncSession, cliente_id: int) -> dict:
+    subastas_participadas_subq = (
+        select(Asistente.subasta)
+        .where(Asistente.cliente == cliente_id)
+        .distinct()
+        .subquery()
+    )
     total_pujas = await db.scalar(
         select(func.count()).select_from(Pujo)
         .join(Asistente, Pujo.asistente == Asistente.identificador)
@@ -327,12 +333,92 @@ async def obtener_metricas(db: AsyncSession, cliente_id: int) -> dict:
         select(func.count()).select_from(Multa)
         .where(Multa.cliente == cliente_id, Multa.pagada == "no")
     )
+    total_subastas_participadas = await db.scalar(
+        select(func.count()).select_from(subastas_participadas_subq)
+    )
+    total_importe_pujado = await db.scalar(
+        select(func.coalesce(func.sum(Pujo.importe), 0))
+        .join(Asistente, Pujo.asistente == Asistente.identificador)
+        .where(Asistente.cliente == cliente_id)
+    )
+    total_importe_pagado = await db.scalar(
+        select(func.coalesce(func.sum(RegistroDeSubasta.importe), 0))
+        .where(RegistroDeSubasta.cliente == cliente_id, RegistroDeSubasta.pagado == True)
+    )
+
+    pujas_por_mes_result = await db.execute(
+        select(
+            func.extract("year", Pujo.realizada_en).label("anio"),
+            func.extract("month", Pujo.realizada_en).label("mes"),
+            func.count().label("cantidad"),
+        )
+        .select_from(Pujo)
+        .join(Asistente, Pujo.asistente == Asistente.identificador)
+        .where(Asistente.cliente == cliente_id)
+        .group_by("anio", "mes")
+        .order_by("anio", "mes")
+    )
+    pujas_por_mes = [
+        {
+            "anio": int(anio),
+            "mes": int(mes),
+            "cantidad": cantidad or 0,
+        }
+        for anio, mes, cantidad in pujas_por_mes_result.all()
+        if anio is not None and mes is not None
+    ]
+
+    participaciones_result = await db.execute(
+        select(Subasta.categoria, func.count().label("participaciones"))
+        .select_from(Subasta)
+        .join(subastas_participadas_subq, Subasta.identificador == subastas_participadas_subq.c.subasta)
+        .where(Subasta.categoria.is_not(None))
+        .group_by(Subasta.categoria)
+    )
+    participaciones_por_categoria = {
+        categoria: participaciones or 0
+        for categoria, participaciones in participaciones_result.all()
+    }
+
+    ganadas_result = await db.execute(
+        select(Subasta.categoria, func.count().label("ganadas"))
+        .select_from(Pujo)
+        .join(Asistente, Pujo.asistente == Asistente.identificador)
+        .join(Subasta, Asistente.subasta == Subasta.identificador)
+        .where(
+            Asistente.cliente == cliente_id,
+            Pujo.ganador == "si",
+            Subasta.categoria.is_not(None),
+        )
+        .group_by(Subasta.categoria)
+    )
+    ganadas_por_categoria = {
+        categoria: ganadas or 0
+        for categoria, ganadas in ganadas_result.all()
+    }
+    categorias = sorted(set(participaciones_por_categoria) | set(ganadas_por_categoria))
+    por_categoria = [
+        {
+            "categoria": categoria,
+            "participaciones": participaciones_por_categoria.get(categoria, 0),
+            "ganadas": ganadas_por_categoria.get(categoria, 0),
+        }
+        for categoria in categorias
+    ]
+
     return {
         "totalPujas": total_pujas or 0,
         "pujasGanadas": pujas_ganadas or 0,
         "totalCompras": total_compras or 0,
         "comprasPagadas": compras_pagadas or 0,
         "multasImpagas": multas_impagas or 0,
+        "totalSubastasParticipadas": total_subastas_participadas or 0,
+        "totalPujasRealizadas": total_pujas or 0,
+        "totalGanadas": pujas_ganadas or 0,
+        "totalImportePujado": float(total_importe_pujado or 0),
+        "totalImportePagado": float(total_importe_pagado or 0),
+        "pujasPorMes": pujas_por_mes,
+        "porCategoria": por_categoria,
     }
 
 

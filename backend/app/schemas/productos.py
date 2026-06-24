@@ -46,11 +46,14 @@ class DepositoResponse(BaseModel):
 
 class ProductoResponse(BaseModel):
     identificador: int
+    nombre: str | None = None
+    descripcion_breve: str | None = Field(None, alias="descripcionBreve")
     fecha: date | None = None
     disponible: str | None = None
     descripcion_catalogo: str | None = Field(None, alias="descripcionCatalogo")
     descripcion_completa: str = Field(alias="descripcionCompleta", max_length=2000)
     precio_base: str = Field(alias="precioBase")
+    moneda: str = "ARS"
     estado_producto: str = Field(alias="estadoProducto")
     declaracion_propiedad: bool = Field(alias="declaracionPropiedad")
     fotos: list[FotoResponse] = []

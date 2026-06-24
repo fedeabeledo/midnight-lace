@@ -125,6 +125,7 @@ def tokens(c):
 def producto_id(c, tokens):
     """Cliente A crea un producto. Devuelve su id (ya en estado asignado)."""
     r = c.post("/v1/productos", headers=auth(tokens["a"]), data={
+        "descripcionCatalogo": "Vestido Test Automatizado\nVestido de prueba para tests automatizados.",
         "descripcionCompleta": "Vestido de prueba para tests automatizados",
         "declaracionPropiedad": "true",
         "precioBase": "10000.00",
@@ -136,6 +137,7 @@ def producto_id(c, tokens):
     attempts = 0
     while estado == "rechazado" and attempts < 10:
         r = c.post("/v1/productos", headers=auth(tokens["a"]), data={
+            "descripcionCatalogo": f"Vestido Test Intento {attempts}\nVestido de prueba para reintento automatizado.",
             "descripcionCompleta": f"Vestido de prueba intento {attempts}",
             "declaracionPropiedad": "true",
             "precioBase": "10000.00",
@@ -205,6 +207,13 @@ class TestMiActividadVacia:
         data = r.json()
         assert "totalPujas" in data
         assert "pujasGanadas" in data
+        assert "totalSubastasParticipadas" in data
+        assert "totalPujasRealizadas" in data
+        assert "totalGanadas" in data
+        assert "totalImportePujado" in data
+        assert "totalImportePagado" in data
+        assert data["pujasPorMes"] == []
+        assert data["porCategoria"] == []
         assert data["totalPujas"] == 0
 
     def test_listar_notificaciones_vacio(self, c, tokens):
@@ -548,6 +557,7 @@ class TestSubastaCompletaConPago:
 
         # Crear producto para dueño A
         r = c.post("/v1/productos", headers=auth(tokens["a"]), data={
+            "descripcionCatalogo": "Producto Pago Test\nProducto para subasta de pago test.",
             "descripcionCompleta": "Producto para subasta de pago test",
             "declaracionPropiedad": "true",
             "precioBase": "5000.00",
@@ -560,6 +570,7 @@ class TestSubastaCompletaConPago:
             if r.json().get("estadoProducto") == "asignado":
                 break
             r = c.post("/v1/productos", headers=auth(tokens["a"]), data={
+                "descripcionCatalogo": f"Producto Pago Retry {_}\nProducto de reintento para pago test.",
                 "descripcionCompleta": f"Producto pago test retry {_}",
                 "declaracionPropiedad": "true",
                 "precioBase": "5000.00",
@@ -623,6 +634,9 @@ class TestSubastaCompletaConPago:
         data = r.json()
         assert all(k in data for k in ["totalPujas", "pujasGanadas", "totalCompras",
                                         "comprasPagadas", "multasImpagas"])
+        assert all(k in data for k in ["totalSubastasParticipadas", "totalPujasRealizadas",
+                                        "totalGanadas", "totalImportePujado", "totalImportePagado",
+                                        "pujasPorMes", "porCategoria"])
 
 
 class TestProcesarPagoDirecto:

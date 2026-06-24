@@ -21,9 +21,11 @@ router = APIRouter(prefix="/v1/productos", tags=["Productos"])
 async def crear_producto(
     user: dict = Depends(require_role("comprador")),
     db: AsyncSession = Depends(get_db),
+    descripcionCatalogo: str = Form(..., min_length=1, max_length=500),
     descripcionCompleta: str = Form(..., max_length=2000),
     declaracionPropiedad: bool = Form(...),
     precioBase: float = Form(..., gt=0.01),
+    moneda: str = Form("ARS", pattern="^(ARS|USD)$"),
     foto1: UploadFile = File(...),
     foto2: UploadFile = File(...),
     foto3: UploadFile = File(...),
@@ -45,6 +47,16 @@ async def crear_producto(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"codigo": "ERROR_VALIDACION", "mensaje": "El precio base debe ser mayor a 0.01."},
+        )
+
+    lineas_catalogo = [linea.strip() for linea in descripcionCatalogo.splitlines()]
+    if len(lineas_catalogo) < 2 or not lineas_catalogo[0] or not "\n".join(lineas_catalogo[1:]).strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "codigo": "ERROR_VALIDACION",
+                "mensaje": "descripcionCatalogo debe incluir el nombre en la primera linea y una descripcion breve desde la segunda linea.",
+            },
         )
 
     duenio = await db.get(Duenio, user["identificador"])
@@ -81,9 +93,11 @@ async def crear_producto(
     producto = await productos_service.crear_producto(
         db=db,
         duenio_id=user["identificador"],
+        descripcion_catalogo=descripcionCatalogo,
         descripcion_completa=descripcionCompleta,
         declaracion_propiedad=declaracionPropiedad,
         precio_base=precioBase,
+        moneda=moneda,
         fotos=fotos_urls,
         detalles_artisticos=detalle_data,
         componentes=componentes_data,

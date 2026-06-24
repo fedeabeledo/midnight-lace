@@ -3,7 +3,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.dependencies import require_role
-from app.schemas.mi_actividad import SolicitudMarcarLeida, SolicitudPagarCompra, SolicitudPagarMulta, SolicitudRetiro
+from app.schemas.mi_actividad import (
+    MetricasMiActividadResponse,
+    SolicitudMarcarLeida,
+    SolicitudPagarCompra,
+    SolicitudPagarMulta,
+    SolicitudRetiro,
+)
 from app.services import mi_actividad as svc
 
 router = APIRouter(prefix="/v1/mi", tags=["Mi Actividad"])
@@ -80,7 +86,7 @@ async def pagar_multa(
     return await svc.pagar_multa(db, id, user["identificador"], body.idMedioPago)
 
 
-@router.get("/metricas")
+@router.get("/metricas", response_model=MetricasMiActividadResponse)
 async def obtener_metricas(
     user: dict = Depends(require_role("comprador")),
     db: AsyncSession = Depends(get_db),

@@ -41,19 +41,22 @@ MOTIVOS_RECHAZO = [
 async def crear_producto(
     db: AsyncSession,
     duenio_id: int,
+    descripcion_catalogo: str,
     descripcion_completa: str,
     declaracion_propiedad: bool,
     precio_base: Decimal,
     fotos: list[str],
+    moneda: str = "ARS",
     detalles_artisticos: dict | None = None,
     componentes: list[dict] | None = None,
 ) -> dict:
     producto = Producto(
         fecha=date.today(),
         disponible="no",
-        descripcion_catalogo="No Posee",
+        descripcion_catalogo=descripcion_catalogo,
         descripcion_completa=descripcion_completa,
         precio_base=precio_base,
+        moneda=moneda,
         revisor=1,  # Midnight Lace
         duenio=duenio_id,
         declaracion_propiedad=declaracion_propiedad,
@@ -83,7 +86,7 @@ async def crear_producto(
             ))
 
     await db.commit()
-    return await _serializar_producto(db, producto)
+    return await _serializar_producto(db, producto, moneda=moneda)
 
 
 async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
@@ -183,9 +186,24 @@ async def listar_productos_duenio(
     for fotos in fotos_por_producto.values():
         fotos.sort(key=lambda x: x["orden"])
 
+    detalles_result = await db.execute(
+        select(DetalleArtistico).where(DetalleArtistico.producto.in_(producto_ids))
+    )
+    detalles_por_producto: dict[int, dict] = {}
+    for d in detalles_result.scalars().all():
+        detalles_por_producto[d.producto] = {
+            "artista": d.artista,
+            "fechaObra": d.fecha_obra.isoformat() if d.fecha_obra else None,
+            "historia": d.historia,
+        }
+
     datos = []
     for p in productos:
-        datos.append(_serializar_producto_lista(p, fotos_por_producto.get(p.identificador, [])))
+        datos.append(_serializar_producto_lista(
+            p,
+            fotos_por_producto.get(p.identificador, []),
+            detalles_por_producto.get(p.identificador),
+        ))
 
     return {
         "datos": datos,
@@ -277,7 +295,15 @@ async def get_condiciones(db: AsyncSession, producto_id: int, duenio_id: int) ->
     }
 
 
-async def _serializar_producto(db: AsyncSession, producto: Producto) -> dict:
+def _partes_descripcion_catalogo(descripcion_catalogo: str | None) -> tuple[str | None, str | None]:
+    if not descripcion_catalogo or descripcion_catalogo == "No Posee":
+        return None, None
+    primera_linea = descripcion_catalogo.splitlines()[0].strip()
+    descripcion_breve = "\n".join(linea.strip() for linea in descripcion_catalogo.splitlines()[1:]).strip()
+    return primera_linea or None, descripcion_breve or None
+
+
+async def _serializar_producto(db: AsyncSession, producto: Producto, moneda: str | None = None) -> dict:
     # Fotos
     result = await db.execute(
         select(Foto).where(Foto.producto == producto.identificador).order_by(Foto.orden)
@@ -353,13 +379,18 @@ async def _serializar_producto(db: AsyncSession, producto: Producto) -> dict:
             except (json.JSONDecodeError, KeyError):
                 pass
 
+    nombre, descripcion_breve = _partes_descripcion_catalogo(producto.descripcion_catalogo)
+
     return {
         "identificador": producto.identificador,
+        "nombre": nombre,
+        "descripcionBreve": descripcion_breve,
         "fecha": producto.fecha,
         "disponible": producto.disponible,
         "descripcionCatalogo": producto.descripcion_catalogo,
         "descripcionCompleta": producto.descripcion_completa,
         "precioBase": str(producto.precio_base),
+        "moneda": moneda or producto.moneda,
         "estadoProducto": producto.estado_producto,
         "declaracionPropiedad": producto.declaracion_propiedad,
         "fotos": fotos,
@@ -371,15 +402,25 @@ async def _serializar_producto(db: AsyncSession, producto: Producto) -> dict:
     }
 
 
-def _serializar_producto_lista(producto: Producto, fotos: list[dict]) -> dict:
+def _serializar_producto_lista(
+    producto: Producto,
+    fotos: list[dict],
+    detalle_artistico: dict | None = None,
+) -> dict:
+    nombre, descripcion_breve = _partes_descripcion_catalogo(producto.descripcion_catalogo)
+
     return {
         "identificador": producto.identificador,
+        "nombre": nombre,
+        "descripcionBreve": descripcion_breve,
         "fecha": producto.fecha,
         "disponible": producto.disponible,
         "descripcionCatalogo": producto.descripcion_catalogo,
         "descripcionCompleta": producto.descripcion_completa,
         "precioBase": str(producto.precio_base),
+        "moneda": producto.moneda,
         "estadoProducto": producto.estado_producto,
         "declaracionPropiedad": producto.declaracion_propiedad,
         "fotos": fotos,
+        "detalleArtistico": detalle_artistico,
     }

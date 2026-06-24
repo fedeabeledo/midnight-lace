@@ -96,6 +96,7 @@ def token_duenio_con_rol(c, tokens):
     token = tokens["duenio"]
     for _ in range(15):
         r = c.post("/v1/productos", headers=auth(token), data={
+            "descripcionCatalogo": "Producto Cuentas Cobro\nProducto usado para habilitar el rol duenio.",
             "descripcionCompleta": "Producto test cuentas cobro",
             "declaracionPropiedad": "true",
             "precioBase": "5000.00",
