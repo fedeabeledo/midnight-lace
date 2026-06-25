@@ -46,8 +46,7 @@ class DepositoResponse(BaseModel):
 
 class ProductoResponse(BaseModel):
     identificador: int
-    nombre: str | None = None
-    descripcion_breve: str | None = Field(None, alias="descripcionBreve")
+    nombre: str
     fecha: date | None = None
     disponible: str | None = None
     descripcion_catalogo: str | None = Field(None, alias="descripcionCatalogo")

@@ -13,6 +13,7 @@ class Producto(Base):
     identificador: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     fecha: Mapped[date | None] = mapped_column(Date, nullable=True)
     disponible: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    nombre: Mapped[str] = mapped_column(String(80), nullable=False)
     descripcion_catalogo: Mapped[str | None] = mapped_column(
         "descripcionCatalogo", String(500), nullable=True
     )

@@ -21,6 +21,7 @@ router = APIRouter(prefix="/v1/productos", tags=["Productos"])
 async def crear_producto(
     user: dict = Depends(require_role("comprador")),
     db: AsyncSession = Depends(get_db),
+    nombre: str = Form(..., min_length=3, max_length=80),
     descripcionCatalogo: str = Form(..., min_length=1, max_length=500),
     descripcionCompleta: str = Form(..., max_length=2000),
     declaracionPropiedad: bool = Form(...),
@@ -49,13 +50,21 @@ async def crear_producto(
             detail={"codigo": "ERROR_VALIDACION", "mensaje": "El precio base debe ser mayor a 0.01."},
         )
 
-    lineas_catalogo = [linea.strip() for linea in descripcionCatalogo.splitlines()]
-    if len(lineas_catalogo) < 2 or not lineas_catalogo[0] or not "\n".join(lineas_catalogo[1:]).strip():
+    if not nombre.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "codigo": "ERROR_VALIDACION",
-                "mensaje": "descripcionCatalogo debe incluir el nombre en la primera linea y una descripcion breve desde la segunda linea.",
+                "mensaje": "nombre es obligatorio.",
+            },
+        )
+
+    if not descripcionCatalogo.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "codigo": "ERROR_VALIDACION",
+                "mensaje": "descripcionCatalogo es obligatoria.",
             },
         )
 
@@ -93,7 +102,8 @@ async def crear_producto(
     producto = await productos_service.crear_producto(
         db=db,
         duenio_id=user["identificador"],
-        descripcion_catalogo=descripcionCatalogo,
+        nombre=nombre.strip(),
+        descripcion_catalogo=descripcionCatalogo.strip(),
         descripcion_completa=descripcionCompleta,
         declaracion_propiedad=declaracionPropiedad,
         precio_base=precioBase,

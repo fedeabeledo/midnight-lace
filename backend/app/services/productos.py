@@ -41,6 +41,7 @@ MOTIVOS_RECHAZO = [
 async def crear_producto(
     db: AsyncSession,
     duenio_id: int,
+    nombre: str,
     descripcion_catalogo: str,
     descripcion_completa: str,
     declaracion_propiedad: bool,
@@ -53,6 +54,7 @@ async def crear_producto(
     producto = Producto(
         fecha=date.today(),
         disponible="no",
+        nombre=nombre,
         descripcion_catalogo=descripcion_catalogo,
         descripcion_completa=descripcion_completa,
         precio_base=precio_base,
@@ -294,14 +296,6 @@ async def get_condiciones(db: AsyncSession, producto_id: int, duenio_id: int) ->
     }
 
 
-def _partes_descripcion_catalogo(descripcion_catalogo: str | None) -> tuple[str | None, str | None]:
-    if not descripcion_catalogo or descripcion_catalogo == "No Posee":
-        return None, None
-    primera_linea = descripcion_catalogo.splitlines()[0].strip()
-    descripcion_breve = "\n".join(linea.strip() for linea in descripcion_catalogo.splitlines()[1:]).strip()
-    return primera_linea or None, descripcion_breve or None
-
-
 async def _serializar_producto(db: AsyncSession, producto: Producto, moneda: str | None = None) -> dict:
     # Fotos
     result = await db.execute(
@@ -378,12 +372,9 @@ async def _serializar_producto(db: AsyncSession, producto: Producto, moneda: str
             except (json.JSONDecodeError, KeyError):
                 pass
 
-    nombre, descripcion_breve = _partes_descripcion_catalogo(producto.descripcion_catalogo)
-
     return {
         "identificador": producto.identificador,
-        "nombre": nombre,
-        "descripcionBreve": descripcion_breve,
+        "nombre": producto.nombre,
         "fecha": producto.fecha,
         "disponible": producto.disponible,
         "descripcionCatalogo": producto.descripcion_catalogo,
@@ -406,12 +397,9 @@ def _serializar_producto_lista(
     fotos: list[dict],
     detalle_artistico: dict | None = None,
 ) -> dict:
-    nombre, descripcion_breve = _partes_descripcion_catalogo(producto.descripcion_catalogo)
-
     return {
         "identificador": producto.identificador,
-        "nombre": nombre,
-        "descripcionBreve": descripcion_breve,
+        "nombre": producto.nombre,
         "fecha": producto.fecha,
         "disponible": producto.disponible,
         "descripcionCatalogo": producto.descripcion_catalogo,
