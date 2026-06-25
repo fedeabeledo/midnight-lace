@@ -19,6 +19,7 @@ class Producto(Base):
     )
     descripcion_completa: Mapped[str] = mapped_column("descripcionCompleta", String(2000), nullable=False)
     precio_base: Mapped[Decimal] = mapped_column("precioBase", Numeric(18, 2), nullable=False)
+    moneda: Mapped[str] = mapped_column(String(3), nullable=False, default="ARS")
     revisor: Mapped[int] = mapped_column(Integer, ForeignKey("empleados.identificador"), nullable=False)
     duenio: Mapped[int] = mapped_column(Integer, ForeignKey("duenios.identificador"), nullable=False)
     seguro: Mapped[str | None] = mapped_column(String(30), ForeignKey("seguros.nroPoliza"), nullable=True)
