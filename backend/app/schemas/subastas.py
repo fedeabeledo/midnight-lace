@@ -19,6 +19,7 @@ class SubastaResponse(BaseModel):
     categoria: str | None = None
     moneda: str | None = None
     duracion_item_minutos: int | None = Field(None, alias="duracionItemMinutos")
+    foto_principal: str | None = Field(None, alias="fotoPrincipal")
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 

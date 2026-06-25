@@ -22,3 +22,4 @@ class Subasta(Base):
     categoria: Mapped[str | None] = mapped_column(String(10), nullable=True)
     moneda: Mapped[str] = mapped_column(String(3), nullable=False)
     duracion_item_minutos: Mapped[int] = mapped_column("duracionItemMinutos", Integer, nullable=False)
+    foto_principal: Mapped[str | None] = mapped_column("fotoPrincipal", String(500), nullable=True)

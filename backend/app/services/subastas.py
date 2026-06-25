@@ -35,6 +35,7 @@ async def crear_subasta(
     capacidad_asistentes: int | None = None,
     tiene_deposito: str | None = None,
     seguridad_propia: str | None = None,
+    foto_principal: str | None = None,
 ) -> dict:
     subasta = Subasta(
         nombre=nombre,
@@ -49,6 +50,7 @@ async def crear_subasta(
         categoria=categoria,
         moneda=moneda,
         duracion_item_minutos=duracion_item_minutos,
+        foto_principal=foto_principal,
     )
     db.add(subasta)
     await db.commit()
@@ -430,4 +432,5 @@ def _serialize_subasta(s: Subasta) -> dict:
         "categoria": s.categoria,
         "moneda": s.moneda,
         "duracionItemMinutos": s.duracion_item_minutos,
+        "fotoPrincipal": s.foto_principal,
     }

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import time
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -14,6 +16,7 @@ from app.schemas.subastas import (
     SubastaResponse,
 )
 from app.services import subastas as subastas_service
+from app.services.auth import save_upload
 from app.services import ws as ws_service
 
 router = APIRouter(prefix="/v1/subastador", tags=["Subastador"])
@@ -34,10 +37,45 @@ async def listar_subastas(
 
 @router.post("/subastas", response_model=SubastaResponse, status_code=status.HTTP_201_CREATED)
 async def crear_subasta(
-    body: SolicitudCrearSubasta,
+    nombre: str = Form(...),
+    fecha: str = Form(...),
+    hora: str = Form(...),
+    categoria: str = Form(...),
+    moneda: str = Form(...),
+    duracionItemMinutos: int = Form(...),
+    ubicacion: str | None = Form(None),
+    capacidadAsistentes: int | None = Form(None),
+    tieneDeposito: str | None = Form(None),
+    seguridadPropia: str | None = Form(None),
+    fotoPortada: UploadFile | None = File(None),
     user: dict = Depends(require_role("subastador")),
     db: AsyncSession = Depends(get_db),
 ):
+    body = SolicitudCrearSubasta(
+        nombre=nombre,
+        fecha=fecha,
+        hora=hora,
+        categoria=categoria,
+        moneda=moneda,
+        duracionItemMinutos=duracionItemMinutos,
+        ubicacion=ubicacion,
+        capacidadAsistentes=capacidadAsistentes,
+        tieneDeposito=tieneDeposito,
+        seguridadPropia=seguridadPropia,
+    )
+
+    foto_principal = None
+    if fotoPortada is not None:
+        content = await fotoPortada.read()
+        extension = (fotoPortada.filename or "portada.jpg").rsplit(".", 1)[-1].lower()
+        if extension not in {"jpg", "jpeg", "png", "webp", "gif", "heic"}:
+            extension = "jpg"
+        foto_principal = save_upload(
+            content,
+            f"subasta_{user['identificador']}_{int(time.time())}.{extension}",
+            subdir="subastas",
+        )
+
     return await subastas_service.crear_subasta(
         db=db,
         subastador_id=user["identificador"],
@@ -51,6 +89,7 @@ async def crear_subasta(
         capacidad_asistentes=body.capacidad_asistentes,
         tiene_deposito=body.tiene_deposito,
         seguridad_propia=body.seguridad_propia,
+        foto_principal=foto_principal,
     )
 
 
