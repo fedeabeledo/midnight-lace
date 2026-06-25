@@ -195,7 +195,7 @@ async def listar_productos_duenio(
     for d in detalles_result.scalars().all():
         detalles_por_producto[d.producto] = {
             "artista": d.artista,
-            "fechaObra": d.fecha_obra.isoformat() if d.fecha_obra else None,
+            "fechaObra": d.fecha_obra,
             "historia": d.historia,
         }
 
@@ -316,7 +316,7 @@ async def _serializar_producto(db: AsyncSession, producto: Producto, moneda: str
     if detalle:
         detalle_data = {
             "artista": detalle.artista,
-            "fechaObra": detalle.fecha_obra.isoformat() if detalle.fecha_obra else None,
+            "fechaObra": detalle.fecha_obra,
             "historia": detalle.historia,
         }
 

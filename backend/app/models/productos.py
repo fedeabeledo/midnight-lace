@@ -50,7 +50,7 @@ class DetalleArtistico(Base):
 
     producto: Mapped[int] = mapped_column(Integer, ForeignKey("productos.identificador"), primary_key=True)
     artista: Mapped[str] = mapped_column(String(200), nullable=False)
-    fecha_obra: Mapped[date | None] = mapped_column("fechaObra", Date, nullable=True)
+    fecha_obra: Mapped[str | None] = mapped_column("fechaObra", String(80), nullable=True)
     historia: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 

@@ -13,7 +13,7 @@ class FotoResponse(BaseModel):
 
 class DetalleArtisticoResponse(BaseModel):
     artista: str
-    fecha_obra: date | None = Field(None, alias="fechaObra")
+    fecha_obra: str | None = Field(None, alias="fechaObra")
     historia: str | None = None
 
     model_config = {"from_attributes": True, "populate_by_name": True}
