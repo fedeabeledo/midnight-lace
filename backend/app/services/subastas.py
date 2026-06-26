@@ -9,8 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ws_manager import ws_manager
 from app.models import (
     Catalogo,
+    Foto,
     ItemCatalogo,
     Notificacion,
+    Persona,
     Producto,
     RegistroDeSubasta,
     Subasta,
@@ -401,14 +403,44 @@ async def get_pool_productos(
     )
     productos = result.scalars().all()
 
+    producto_ids = [p.identificador for p in productos]
+    duenio_ids = [p.duenio for p in productos]
+
+    fotos_por_producto: dict[int, list[dict]] = {}
+    if producto_ids:
+        fotos_result = await db.execute(
+            select(Foto).where(Foto.producto.in_(producto_ids))
+        )
+        for f in fotos_result.scalars().all():
+            fotos_por_producto.setdefault(f.producto, []).append({
+                "identificador": f.identificador,
+                "foto": f.foto,
+                "orden": f.orden,
+            })
+        for fotos in fotos_por_producto.values():
+            fotos.sort(key=lambda x: x["orden"])
+
+    personas_por_id = {}
+    if duenio_ids:
+        personas_result = await db.execute(
+            select(Persona).where(Persona.identificador.in_(duenio_ids))
+        )
+        personas_por_id = {p.identificador: p for p in personas_result.scalars().all()}
+
     datos = []
     for p in productos:
+        persona = personas_por_id.get(p.duenio)
         datos.append({
             "identificador": p.identificador,
+            "nombre": p.nombre,
+            "descripcionCatalogo": p.descripcion_catalogo,
             "descripcionCompleta": p.descripcion_completa,
             "precioBase": str(p.precio_base),
+            "moneda": p.moneda,
             "estadoProducto": p.estado_producto,
             "duenio": p.duenio,
+            "publicadoPor": persona.nombre_usuario if persona else None,
+            "fotos": fotos_por_producto.get(p.identificador, []),
         })
 
     return {
