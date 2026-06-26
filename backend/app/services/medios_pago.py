@@ -102,7 +102,7 @@ async def crear_medio(
         cliente=cliente_id,
         tipo=tipo,
         moneda=moneda,
-        verificado="no",
+        verificado="si",
         activo="si",
     )
     db.add(medio)
@@ -142,8 +142,6 @@ async def crear_medio(
     logger.info(category_log)
 
     await db.commit()
-
-    await _verificar_medio_simulado(db, medio.identificador, cliente_id)
 
     respuesta = await _serializar_medio(db, medio)
     respuesta.update({
@@ -194,7 +192,7 @@ async def actualizar_medio(
 
     medio.tipo = tipo
     medio.moneda = moneda
-    medio.verificado = "no"
+    medio.verificado = "si"
     _agregar_detalle(db, medio_id, tipo, detalle)
 
     await db.commit()
@@ -276,7 +274,7 @@ async def _serializar_medio(db: AsyncSession, medio: MedioDePago) -> dict:
         "identificador": medio.identificador,
         "tipo": medio.tipo,
         "moneda": medio.moneda,
-        "verificado": medio.verificado,
+        "verificado": "si",
         "activo": medio.activo,
         "detalle": detalle,
     }

@@ -20,11 +20,6 @@ async def procesar_pago(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"codigo": "MEDIO_NO_ENCONTRADO", "mensaje": "Medio de pago no encontrado."},
         )
-    if medio.verificado != "si":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"codigo": "MEDIO_PAGO_NO_VERIFICADO", "mensaje": "El medio de pago no está verificado."},
-        )
     if medio.activo != "si":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

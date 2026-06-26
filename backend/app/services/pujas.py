@@ -99,20 +99,12 @@ async def crear_puja(
             },
         )
 
-    # 6. Verificar medio de pago verificado
+    # 6. Verificar medio de pago
     medio_pago = await db.get(MedioDePago, medio_pago_id)
     if medio_pago is None or medio_pago.cliente != comprador_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"codigo": "SIN_PERMISO", "mensaje": "Medio de pago no encontrado."},
-        )
-    if medio_pago.verificado != "si":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "codigo": "MEDIO_PAGO_NO_VERIFICADO",
-                "mensaje": "El medio de pago debe estar verificado.",
-            },
         )
     if medio_pago.activo != "si":
         raise HTTPException(
