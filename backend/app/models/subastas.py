@@ -15,7 +15,7 @@ class Subasta(Base):
     hora: Mapped[time] = mapped_column(Time, nullable=False)
     estado: Mapped[str | None] = mapped_column(String(10), nullable=True)
     subastador: Mapped[int | None] = mapped_column(Integer, ForeignKey("subastadores.identificador"), nullable=True)
-    ubicacion: Mapped[str | None] = mapped_column(String(350), nullable=True)
+    ubicacion: Mapped[str] = mapped_column(String(350), nullable=False)
     capacidad_asistentes: Mapped[int | None] = mapped_column("capacidadAsistentes", Integer, nullable=True)
     tiene_deposito: Mapped[str | None] = mapped_column("tieneDeposito", String(2), nullable=True)
     seguridad_propia: Mapped[str | None] = mapped_column("seguridadPropia", String(2), nullable=True)

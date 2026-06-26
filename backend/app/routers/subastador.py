@@ -43,7 +43,7 @@ async def crear_subasta(
     categoria: str = Form(...),
     moneda: str = Form(...),
     duracionItemMinutos: int = Form(...),
-    ubicacion: str | None = Form(None),
+    ubicacion: str = Form(...),
     capacidadAsistentes: int | None = Form(None),
     tieneDeposito: str | None = Form(None),
     seguridadPropia: str | None = Form(None),

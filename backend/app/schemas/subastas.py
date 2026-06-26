@@ -12,7 +12,7 @@ class SubastaResponse(BaseModel):
     hora: str | None = None
     estado: str | None = None
     id_subastador: int | None = Field(None, alias="idSubastador")
-    ubicacion: str | None = None
+    ubicacion: str
     capacidad_asistentes: int | None = Field(None, alias="capacidadAsistentes")
     tiene_deposito: str | None = Field(None, alias="tieneDeposito")
     seguridad_propia: str | None = Field(None, alias="seguridadPropia")
@@ -28,7 +28,7 @@ class SolicitudCrearSubasta(BaseModel):
     nombre: str
     fecha: date
     hora: str
-    ubicacion: str | None = None
+    ubicacion: str
     capacidad_asistentes: int | None = Field(None, alias="capacidadAsistentes")
     tiene_deposito: Literal["si", "no"] | None = Field(None, alias="tieneDeposito")
     seguridad_propia: Literal["si", "no"] | None = Field(None, alias="seguridadPropia")
@@ -37,6 +37,13 @@ class SolicitudCrearSubasta(BaseModel):
     duracion_item_minutos: int = Field(alias="duracionItemMinutos", ge=1)
 
     model_config = {"populate_by_name": True}
+
+    @field_validator("ubicacion")
+    @classmethod
+    def ubicacion_obligatoria(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("La ubicacion es obligatoria.")
+        return v.strip()
 
     @field_validator("fecha")
     @classmethod

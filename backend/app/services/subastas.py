@@ -33,7 +33,7 @@ async def crear_subasta(
     categoria: str,
     moneda: str,
     duracion_item_minutos: int,
-    ubicacion: str | None = None,
+    ubicacion: str,
     capacidad_asistentes: int | None = None,
     tiene_deposito: str | None = None,
     seguridad_propia: str | None = None,
