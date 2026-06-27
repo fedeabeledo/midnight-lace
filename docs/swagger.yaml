@@ -699,6 +699,13 @@ components:
             properties:
                 identificador:
                     type: integer
+                titulo:
+                    type: string
+                    maxLength: 200
+                estado:
+                    type: string
+                    enum: [nuevo, usado]
+                    description: Condición física del producto.
                 fechaIngreso:
                     type: string
                     format: date
@@ -785,6 +792,8 @@ components:
             type: object
             required:
                 [
+                    titulo,
+                    estado,
                     descripcionCompleta,
                     declaracionPropiedad,
                     precioBase,
@@ -796,6 +805,13 @@ components:
                     foto6,
                 ]
             properties:
+                titulo:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                estado:
+                    type: string
+                    enum: [nuevo, usado]
                 descripcionCompleta:
                     type: string
                 declaracionPropiedad:

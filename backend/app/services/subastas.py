@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
     Catalogo,
+    Foto,
     ItemCatalogo,
     Notificacion,
     Producto,
@@ -283,7 +284,9 @@ async def agregar_item_catalogo(
     return {
         "identificador": item.identificador,
         "idProducto": producto_id,
-        "descripcionProducto": producto.descripcion_completa,
+        "titulo": producto.titulo,
+        "estado": producto.estado,
+        "descripcionCatalogo": producto.descripcion_catalogo,
         "precioBase": str(item.precio_base),
         "orden": item.orden,
         "comision": str(item.comision),
@@ -345,13 +348,33 @@ async def get_catalogo(
     )
     items = result.scalars().all()
 
+    producto_ids = [item.producto for item in items]
+    fotos_por_producto: dict[int, dict] = {}
+    if producto_ids:
+        fotos_result = await db.execute(
+            select(Foto)
+            .where(Foto.producto.in_(producto_ids))
+            .distinct(Foto.producto)
+            .order_by(Foto.producto, Foto.orden, Foto.identificador)
+        )
+        for foto in fotos_result.scalars().all():
+            fotos_por_producto[foto.producto] = {
+                "identificador": foto.identificador,
+                "foto": foto.foto,
+                "orden": foto.orden,
+            }
+
     items_data = []
     for item in items:
         producto = await db.get(Producto, item.producto)
+        primera_foto = fotos_por_producto.get(item.producto)
         items_data.append({
             "identificador": item.identificador,
             "idProducto": item.producto,
-            "descripcionProducto": producto.descripcion_completa if producto else None,
+            "titulo": producto.titulo if producto else None,
+            "estado": producto.estado if producto else None,
+            "fotos": [primera_foto] if primera_foto else [],
+            "descripcionCatalogo": producto.descripcion_catalogo if producto else None,
             "precioBase": str(item.precio_base),
             "orden": item.orden,
             "comision": str(item.comision),
@@ -367,6 +390,12 @@ async def get_catalogo(
         "idSubasta": catalogo.subasta,
         "idSubastador": subasta.subastador if subasta else None,
         "items": items_data,
+        "meta": {
+            "pagina": pagina,
+            "cantidad": cantidad,
+            "total": total,
+            "total_paginas": total_paginas,
+        },
     }
 
 
@@ -393,6 +422,8 @@ async def get_pool_productos(
     for p in productos:
         datos.append({
             "identificador": p.identificador,
+            "titulo": p.titulo,
+            "estado": p.estado,
             "descripcionCompleta": p.descripcion_completa,
             "precioBase": str(p.precio_base),
             "estadoProducto": p.estado_producto,

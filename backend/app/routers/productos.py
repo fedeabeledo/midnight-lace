@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,8 @@ router = APIRouter(prefix="/v1/productos", tags=["Productos"])
 async def crear_producto(
     user: dict = Depends(require_role("comprador")),
     db: AsyncSession = Depends(get_db),
+    titulo: str = Form(..., min_length=1, max_length=200),
+    estado: Literal["nuevo", "usado"] = Form(...),
     descripcionCompleta: str = Form(..., max_length=2000),
     declaracionPropiedad: bool = Form(...),
     precioBase: float = Form(..., gt=0.01),
@@ -81,6 +84,8 @@ async def crear_producto(
     producto = await productos_service.crear_producto(
         db=db,
         duenio_id=user["identificador"],
+        titulo=titulo,
+        estado=estado,
         descripcion_completa=descripcionCompleta,
         declaracion_propiedad=declaracionPropiedad,
         precio_base=precioBase,

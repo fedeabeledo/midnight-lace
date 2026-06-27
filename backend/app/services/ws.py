@@ -83,6 +83,8 @@ async def iniciar_primer_item(db: AsyncSession, subasta_id: int) -> dict | None:
 
     return {
         "idItem": item.identificador,
+        "titulo": producto.titulo if producto else None,
+        "estado": producto.estado if producto else None,
         "descripcionProducto": producto.descripcion_catalogo if producto else None,
         "precioBase": str(item.precio_base),
         "finalizaEn": finaliza_en.isoformat(),
@@ -216,6 +218,8 @@ async def cerrar_item(db: AsyncSession, subasta_id: int) -> list[dict]:
                 },
                 "itemActual": {
                     "idItem": siguiente.identificador,
+                    "titulo": siguiente_producto.titulo if siguiente_producto else None,
+                    "estado": siguiente_producto.estado if siguiente_producto else None,
                     "descripcionProducto": siguiente_producto.descripcion_catalogo if siguiente_producto else None,
                     "precioBase": str(siguiente.precio_base),
                     "finalizaEn": finaliza_en.isoformat(),

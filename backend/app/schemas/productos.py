@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -46,6 +47,8 @@ class DepositoResponse(BaseModel):
 
 class ProductoResponse(BaseModel):
     identificador: int
+    titulo: str
+    estado: Literal["nuevo", "usado"]
     fecha: date | None = None
     disponible: str | None = None
     descripcion_catalogo: str | None = Field(None, alias="descripcionCatalogo")
