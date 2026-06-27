@@ -14,6 +14,13 @@ class PaisPerfil(BaseModel):
     model_config = {"from_attributes": True, "populate_by_name": True}
 
 
+class SubastadorPerfil(BaseModel):
+    matricula: str | None = None
+    region: str | None = None
+
+    model_config = {"from_attributes": True, "populate_by_name": True}
+
+
 class PerfilResponse(BaseModel):
     identificador: int
     documento: str
@@ -32,7 +39,11 @@ class PerfilResponse(BaseModel):
     url_foto_doc_dorso: str = Field(alias="urlFotoDocDorso")
     fecha_actualizacion_foto_dni: date = Field(alias="fechaActualizacionFotoDni")
     url_foto_perfil: str | None = Field(None, alias="urlFotoPerfil")
+    rol: str | None = None
     categoria: str | None = None
+    matricula: str | None = None
+    region: str | None = None
+    subastador: SubastadorPerfil | None = None
     pais: PaisPerfil | None = None
 
     model_config = {"from_attributes": True, "populate_by_name": True}

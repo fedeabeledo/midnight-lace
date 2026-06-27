@@ -3,7 +3,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Cliente, Persona, Pais
+from app.models import Cliente, Persona, Pais, Subastador
 
 
 async def get_perfil(db: AsyncSession, persona_id: int) -> dict | None:
@@ -13,6 +13,7 @@ async def get_perfil(db: AsyncSession, persona_id: int) -> dict | None:
 
     pais = None
     cliente = await db.get(Cliente, persona_id)
+    subastador = await db.get(Subastador, persona_id)
     if cliente and cliente.numero_pais:
         pais = await db.get(Pais, cliente.numero_pais)
 
@@ -34,7 +35,14 @@ async def get_perfil(db: AsyncSession, persona_id: int) -> dict | None:
         "url_foto_doc_dorso": persona.url_foto_doc_dorso,
         "fecha_actualizacion_foto_dni": persona.fecha_actualizacion_foto_dni,
         "url_foto_perfil": persona.url_foto_perfil,
+        "rol": "subastador" if subastador else "cliente" if cliente else None,
         "categoria": cliente.categoria if cliente else None,
+        "matricula": subastador.matricula if subastador else None,
+        "region": subastador.region if subastador else None,
+        "subastador": {
+            "matricula": subastador.matricula,
+            "region": subastador.region,
+        } if subastador else None,
         "pais": {
             "numero": pais.numero,
             "nombre": pais.nombre,

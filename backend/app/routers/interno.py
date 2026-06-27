@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.core.ws_manager import ws_manager
 from app.services import auth as auth_service
 from app.services import email as email_service
+from app.services import mi_actividad as mi_actividad_service
 from app.services import productos as productos_service
 from app.services import ws as ws_service
 
@@ -118,6 +119,13 @@ async def cierre_subasta(
         await ws_manager.broadcast(body.id_subasta, event)
 
     return {"eventos": events}
+
+
+@router.post("/verificar-vencimientos")
+async def verificar_vencimientos(
+    db: AsyncSession = Depends(get_db),
+):
+    return await mi_actividad_service.verificar_vencimientos(db)
 
 
 @router.post("/verificacion-condiciones")

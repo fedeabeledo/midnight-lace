@@ -6,11 +6,14 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ws_manager import ws_manager
 from app.models import (
     Catalogo,
     Foto,
+    Foto,
     ItemCatalogo,
     Notificacion,
+    Persona,
     Producto,
     RegistroDeSubasta,
     Subasta,
@@ -31,10 +34,11 @@ async def crear_subasta(
     categoria: str,
     moneda: str,
     duracion_item_minutos: int,
-    ubicacion: str | None = None,
+    ubicacion: str,
     capacidad_asistentes: int | None = None,
     tiene_deposito: str | None = None,
     seguridad_propia: str | None = None,
+    foto_principal: str | None = None,
 ) -> dict:
     subasta = Subasta(
         nombre=nombre,
@@ -49,6 +53,7 @@ async def crear_subasta(
         categoria=categoria,
         moneda=moneda,
         duracion_item_minutos=duracion_item_minutos,
+        foto_principal=foto_principal,
     )
     db.add(subasta)
     await db.commit()
@@ -176,14 +181,17 @@ async def get_registros(
     )
     registros = result.scalars().all()
 
+    MIDNIGHT_LACE_ID = 1
     datos = []
     for r in registros:
+        no_vendido = (r.cliente == MIDNIGHT_LACE_ID and r.importe == Decimal("0"))
         datos.append({
             "identificador": r.identificador,
             "idSubasta": r.subasta,
             "idDuenio": r.duenio,
             "idProducto": r.producto,
-            "idCliente": r.cliente,
+            "idCliente": None if no_vendido else r.cliente,
+            "vendido": not no_vendido,
             "importe": str(r.importe),
             "comision": str(r.comision),
             "costoEnvio": str(r.costo_envio),
@@ -269,17 +277,23 @@ async def agregar_item_catalogo(
 
     producto.estado_producto = "pendiente_confirmacion"
 
+    datos_notif = {
+        "idProducto": producto_id,
+        "idCatalogo": catalogo_id,
+        "precioBase": str(producto.precio_base),
+        "comision": str(comision),
+        "fecha": subasta.fecha.isoformat() if subasta.fecha else None,
+        "hora": subasta.hora.isoformat() if subasta.hora else None,
+        "lugar": subasta.ubicacion,
+    }
     db.add(Notificacion(
         persona=producto.duenio,
         tipo="producto_aceptado",
-        detalle=json.dumps({
-            "idProducto": producto_id,
-            "idCatalogo": catalogo_id,
-            "comision": str(comision),
-        }),
+        detalle=json.dumps(datos_notif),
     ))
 
     await db.commit()
+    await ws_manager.send_to_user(producto.duenio, {"evento": "producto_aceptado", "datos": datos_notif})
 
     return {
         "identificador": item.identificador,
@@ -418,16 +432,44 @@ async def get_pool_productos(
     )
     productos = result.scalars().all()
 
+    producto_ids = [p.identificador for p in productos]
+    duenio_ids = [p.duenio for p in productos]
+
+    fotos_por_producto: dict[int, list[dict]] = {}
+    if producto_ids:
+        fotos_result = await db.execute(
+            select(Foto).where(Foto.producto.in_(producto_ids))
+        )
+        for f in fotos_result.scalars().all():
+            fotos_por_producto.setdefault(f.producto, []).append({
+                "identificador": f.identificador,
+                "foto": f.foto,
+                "orden": f.orden,
+            })
+        for fotos in fotos_por_producto.values():
+            fotos.sort(key=lambda x: x["orden"])
+
+    personas_por_id = {}
+    if duenio_ids:
+        personas_result = await db.execute(
+            select(Persona).where(Persona.identificador.in_(duenio_ids))
+        )
+        personas_por_id = {p.identificador: p for p in personas_result.scalars().all()}
+
     datos = []
     for p in productos:
+        persona = personas_por_id.get(p.duenio)
         datos.append({
             "identificador": p.identificador,
             "titulo": p.titulo,
             "estado": p.estado,
             "descripcionCompleta": p.descripcion_completa,
             "precioBase": str(p.precio_base),
+            "moneda": p.moneda,
             "estadoProducto": p.estado_producto,
             "duenio": p.duenio,
+            "publicadoPor": persona.nombre_usuario if persona else None,
+            "fotos": fotos_por_producto.get(p.identificador, []),
         })
 
     return {
@@ -451,4 +493,5 @@ def _serialize_subasta(s: Subasta) -> dict:
         "categoria": s.categoria,
         "moneda": s.moneda,
         "duracionItemMinutos": s.duracion_item_minutos,
+        "fotoPrincipal": s.foto_principal,
     }

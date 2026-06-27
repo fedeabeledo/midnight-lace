@@ -16,7 +16,7 @@ from app.models import (
 router = APIRouter(tags=["WebSocket"])
 
 
-async def _authenticate_ws(websocket: WebSocket) -> dict | None:
+async def _authenticate_ws(websocket: WebSocket, rechazar_multa: bool = True) -> dict | None:
     token = websocket.query_params.get("token")
     if not token:
         auth_header = websocket.headers.get("authorization", "")
@@ -43,7 +43,6 @@ async def _authenticate_ws(websocket: WebSocket) -> dict | None:
         return None
 
     user_id = int(sub)
-    multa_impaga = payload.get("multaImpaga", False)
 
     async with async_session() as db:
         persona = await db.get(Persona, user_id)
@@ -58,7 +57,7 @@ async def _authenticate_ws(websocket: WebSocket) -> dict | None:
             await websocket.close(code=4001)
             return None
 
-        if not multa_impaga:
+        if rechazar_multa:
             multa = await db.scalar(
                 select(Multa).where(
                     Multa.cliente == user_id,
@@ -71,7 +70,7 @@ async def _authenticate_ws(websocket: WebSocket) -> dict | None:
 
     return {
         "identificador": user_id,
-        "multa_impaga": multa_impaga,
+        "multa_impaga": payload.get("multaImpaga", False),
     }
 
 
@@ -136,3 +135,20 @@ async def ws_subasta(websocket: WebSocket, idSubasta: int):
         ws_manager.disconnect(websocket)
     except Exception:
         ws_manager.disconnect(websocket)
+
+
+@router.websocket("/v1/ws/usuario")
+async def ws_usuario(websocket: WebSocket):
+    await websocket.accept()
+    user = await _authenticate_ws(websocket, rechazar_multa=False)
+    if user is None:
+        return
+    user_id = user["identificador"]
+    ws_manager.register_user(websocket, user_id)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.unregister_user(websocket, user_id)
+    except Exception:
+        ws_manager.unregister_user(websocket, user_id)

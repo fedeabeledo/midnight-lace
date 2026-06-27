@@ -14,7 +14,7 @@ class FotoResponse(BaseModel):
 
 class DetalleArtisticoResponse(BaseModel):
     artista: str
-    fecha_obra: date | None = Field(None, alias="fechaObra")
+    fecha_obra: str | None = Field(None, alias="fechaObra")
     historia: str | None = None
 
     model_config = {"from_attributes": True, "populate_by_name": True}
@@ -54,6 +54,7 @@ class ProductoResponse(BaseModel):
     descripcion_catalogo: str | None = Field(None, alias="descripcionCatalogo")
     descripcion_completa: str = Field(alias="descripcionCompleta", max_length=2000)
     precio_base: str = Field(alias="precioBase")
+    moneda: str = "ARS"
     estado_producto: str = Field(alias="estadoProducto")
     declaracion_propiedad: bool = Field(alias="declaracionPropiedad")
     fotos: list[FotoResponse] = []

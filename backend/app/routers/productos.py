@@ -27,6 +27,7 @@ async def crear_producto(
     descripcionCompleta: str = Form(..., max_length=2000),
     declaracionPropiedad: bool = Form(...),
     precioBase: float = Form(..., gt=0.01),
+    moneda: str = Form("ARS", pattern="^(ARS|USD)$"),
     foto1: UploadFile = File(...),
     foto2: UploadFile = File(...),
     foto3: UploadFile = File(...),
@@ -48,6 +49,24 @@ async def crear_producto(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"codigo": "ERROR_VALIDACION", "mensaje": "El precio base debe ser mayor a 0.01."},
+        )
+
+    if not nombre.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "codigo": "ERROR_VALIDACION",
+                "mensaje": "nombre es obligatorio.",
+            },
+        )
+
+    if not descripcionCatalogo.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "codigo": "ERROR_VALIDACION",
+                "mensaje": "descripcionCatalogo es obligatoria.",
+            },
         )
 
     duenio = await db.get(Duenio, user["identificador"])
@@ -89,6 +108,7 @@ async def crear_producto(
         descripcion_completa=descripcionCompleta,
         declaracion_propiedad=declaracionPropiedad,
         precio_base=precioBase,
+        moneda=moneda,
         fotos=fotos_urls,
         detalles_artisticos=detalle_data,
         componentes=componentes_data,
@@ -145,6 +165,27 @@ async def ver_seguro(
             detail={"codigo": "NO_ENCONTRADO", "mensaje": "Seguro no encontrado para este producto."},
         )
     return seguro
+
+
+@router.get("/{id}/condiciones")
+async def ver_condiciones(
+    id: int,
+    user: dict = Depends(require_role("duenio")),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        condiciones = await productos_service.get_condiciones(db, id, user["identificador"])
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"codigo": "ESTADO_INVALIDO", "mensaje": str(e)},
+        )
+    if condiciones is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"codigo": "NO_ENCONTRADO", "mensaje": "Producto no encontrado."},
+        )
+    return condiciones
 
 
 @router.patch("/{id}/aceptar-condiciones", response_model=ProductoResponse)

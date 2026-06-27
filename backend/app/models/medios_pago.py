@@ -13,7 +13,7 @@ class MedioDePago(Base):
     identificador: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     cliente: Mapped[int] = mapped_column(Integer, ForeignKey("clientes.identificador"), nullable=False)
     tipo: Mapped[str] = mapped_column(String(20), nullable=False)
-    verificado: Mapped[str] = mapped_column(String(2), nullable=False, default="no")
+    verificado: Mapped[str] = mapped_column(String(2), nullable=False, default="si")
     moneda: Mapped[str] = mapped_column(String(3), nullable=False, default="ARS")
     activo: Mapped[str] = mapped_column(String(2), nullable=False, default="si")
 

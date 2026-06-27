@@ -99,20 +99,12 @@ async def crear_puja(
             },
         )
 
-    # 6. Verificar medio de pago verificado
+    # 6. Verificar medio de pago
     medio_pago = await db.get(MedioDePago, medio_pago_id)
     if medio_pago is None or medio_pago.cliente != comprador_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"codigo": "SIN_PERMISO", "mensaje": "Medio de pago no encontrado."},
-        )
-    if medio_pago.verificado != "si":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "codigo": "MEDIO_PAGO_NO_VERIFICADO",
-                "mensaje": "El medio de pago debe estar verificado.",
-            },
         )
     if medio_pago.activo != "si":
         raise HTTPException(
@@ -120,15 +112,16 @@ async def crear_puja(
             detail={"codigo": "MEDIO_PAGO_INACTIVO", "mensaje": "El medio de pago está desactivado."},
         )
 
-    # 7. Verificar cheque certificado
+    # 7. Verificar cheque certificado cubre puja + comisión (la compra total mínima conocida al pujar)
     if medio_pago.tipo == "chequeCertificado":
         cheque = await db.get(ChequeCertificado, medio_pago_id)
-        if cheque and cheque.monto_disponible < importe:
+        minimo = importe + item.comision
+        if cheque and cheque.monto_disponible < minimo:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
                     "codigo": "PUJA_CHEQUE_SIN_FONDOS",
-                    "mensaje": f"El cheque certificado no tiene fondos suficientes. Disponible: {cheque.monto_disponible}",
+                    "mensaje": f"Fondos insuficientes. Se requiere al menos {minimo} (puja + comisión). Disponible: {cheque.monto_disponible}",
                 },
             )
 

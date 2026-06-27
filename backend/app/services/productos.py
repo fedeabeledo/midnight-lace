@@ -8,7 +8,10 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ws_manager import ws_manager
 from app.models import (
+    Catalogo,
+    ItemCatalogo,
     Producto,
     Foto,
     DetalleArtistico,
@@ -18,6 +21,7 @@ from app.models import (
     Subastador,
     Seguro,
     Notificacion,
+    Subasta,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,6 +47,7 @@ async def crear_producto(
     declaracion_propiedad: bool,
     precio_base: Decimal,
     fotos: list[str],
+    moneda: str = "ARS",
     detalles_artisticos: dict | None = None,
     componentes: list[dict] | None = None,
 ) -> dict:
@@ -51,9 +56,11 @@ async def crear_producto(
         estado=estado,
         fecha=date.today(),
         disponible="no",
-        descripcion_catalogo="No Posee",
+        nombre=nombre,
+        descripcion_catalogo=descripcion_catalogo,
         descripcion_completa=descripcion_completa,
         precio_base=precio_base,
+        moneda=moneda,
         revisor=1,  # Midnight Lace
         duenio=duenio_id,
         declaracion_propiedad=declaracion_propiedad,
@@ -83,7 +90,7 @@ async def crear_producto(
             ))
 
     await db.commit()
-    return await _serializar_producto(db, producto)
+    return await _serializar_producto(db, producto, moneda=moneda)
 
 
 async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
@@ -94,11 +101,10 @@ async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
     aprobado = random.random() < 0.70
 
     if aprobado:
-        # Asignar subastador aleatorio
-        result = await db.execute(select(Subastador.identificador))
+        result = await db.execute(select(Subastador.identificador).order_by(Subastador.identificador))
         subastadores = [r[0] for r in result.all()]
         if subastadores:
-            producto.subastador_asignado = random.choice(subastadores)
+            producto.subastador_asignado = subastadores[0]
 
         # Asignar depósito aleatorio
         result = await db.execute(select(Deposito.identificador))
@@ -132,12 +138,14 @@ async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
         await db.flush()
 
         motivo = random.choice(MOTIVOS_RECHAZO)
+        datos_rechazo = {"idProducto": producto_id, "motivo": motivo}
         db.add(Notificacion(
             persona=producto.duenio,
             tipo="producto_rechazado",
-            detalle=json.dumps({"idProducto": producto_id, "motivo": motivo}),
+            detalle=json.dumps(datos_rechazo),
         ))
         await db.commit()
+        await ws_manager.send_to_user(producto.duenio, {"evento": "producto_rechazado", "datos": datos_rechazo})
 
         logger.info(f"[VERIFICACION] Producto {producto_id} RECHAZADO — motivo: {motivo}")
         return "rechazado"
@@ -182,9 +190,24 @@ async def listar_productos_duenio(
     for fotos in fotos_por_producto.values():
         fotos.sort(key=lambda x: x["orden"])
 
+    detalles_result = await db.execute(
+        select(DetalleArtistico).where(DetalleArtistico.producto.in_(producto_ids))
+    )
+    detalles_por_producto: dict[int, dict] = {}
+    for d in detalles_result.scalars().all():
+        detalles_por_producto[d.producto] = {
+            "artista": d.artista,
+            "fechaObra": d.fecha_obra,
+            "historia": d.historia,
+        }
+
     datos = []
     for p in productos:
-        datos.append(_serializar_producto_lista(p, fotos_por_producto.get(p.identificador, [])))
+        datos.append(_serializar_producto_lista(
+            p,
+            fotos_por_producto.get(p.identificador, []),
+            detalles_por_producto.get(p.identificador),
+        ))
 
     return {
         "datos": datos,
@@ -231,19 +254,52 @@ async def aceptar_condiciones(
 
     if acepta:
         producto.estado_producto = "en_subasta"
+        datos_en_subasta = {"idProducto": producto_id}
+        db.add(Notificacion(
+            persona=duenio_id,
+            tipo="producto_en_subasta",
+            detalle=json.dumps(datos_en_subasta),
+        ))
+        await db.commit()
+        await ws_manager.send_to_user(duenio_id, {"evento": "producto_en_subasta", "datos": datos_en_subasta})
     else:
+        item = await db.scalar(select(ItemCatalogo).where(ItemCatalogo.producto == producto_id))
+        if item is not None:
+            await db.delete(item)
         producto.estado_producto = "asignado"
+        datos_devolucion = {"idProducto": producto_id}
         db.add(Notificacion(
             persona=duenio_id,
             tipo="devolucion_producto",
-            detalle=json.dumps({"idProducto": producto_id}),
+            detalle=json.dumps(datos_devolucion),
         ))
+        await db.commit()
+        await ws_manager.send_to_user(duenio_id, {"evento": "devolucion_producto", "datos": datos_devolucion})
 
-    await db.commit()
     return await _serializar_producto(db, producto)
 
 
-async def _serializar_producto(db: AsyncSession, producto: Producto) -> dict:
+async def get_condiciones(db: AsyncSession, producto_id: int, duenio_id: int) -> dict | None:
+    producto = await db.get(Producto, producto_id)
+    if producto is None or producto.duenio != duenio_id:
+        return None
+    if producto.estado_producto != "pendiente_confirmacion":
+        raise ValueError("El producto no está pendiente de confirmación.")
+    item = await db.scalar(select(ItemCatalogo).where(ItemCatalogo.producto == producto_id))
+    if item is None:
+        raise ValueError("Item de catálogo no encontrado.")
+    catalogo = await db.get(Catalogo, item.catalogo)
+    subasta = await db.get(Subasta, catalogo.subasta) if catalogo else None
+    return {
+        "precioBase": str(item.precio_base),
+        "comision": str(item.comision),
+        "fecha": subasta.fecha.isoformat() if subasta and subasta.fecha else None,
+        "hora": subasta.hora.isoformat() if subasta and subasta.hora else None,
+        "lugar": subasta.ubicacion if subasta else None,
+    }
+
+
+async def _serializar_producto(db: AsyncSession, producto: Producto, moneda: str | None = None) -> dict:
     # Fotos
     result = await db.execute(
         select(Foto).where(Foto.producto == producto.identificador).order_by(Foto.orden)
@@ -262,7 +318,7 @@ async def _serializar_producto(db: AsyncSession, producto: Producto) -> dict:
     if detalle:
         detalle_data = {
             "artista": detalle.artista,
-            "fechaObra": detalle.fecha_obra.isoformat() if detalle.fecha_obra else None,
+            "fechaObra": detalle.fecha_obra,
             "historia": detalle.historia,
         }
 
@@ -328,6 +384,7 @@ async def _serializar_producto(db: AsyncSession, producto: Producto) -> dict:
         "descripcionCatalogo": producto.descripcion_catalogo,
         "descripcionCompleta": producto.descripcion_completa,
         "precioBase": str(producto.precio_base),
+        "moneda": moneda or producto.moneda,
         "estadoProducto": producto.estado_producto,
         "declaracionPropiedad": producto.declaracion_propiedad,
         "fotos": fotos,
@@ -339,7 +396,11 @@ async def _serializar_producto(db: AsyncSession, producto: Producto) -> dict:
     }
 
 
-def _serializar_producto_lista(producto: Producto, fotos: list[dict]) -> dict:
+def _serializar_producto_lista(
+    producto: Producto,
+    fotos: list[dict],
+    detalle_artistico: dict | None = None,
+) -> dict:
     return {
         "identificador": producto.identificador,
         "titulo": producto.titulo,
@@ -349,7 +410,9 @@ def _serializar_producto_lista(producto: Producto, fotos: list[dict]) -> dict:
         "descripcionCatalogo": producto.descripcion_catalogo,
         "descripcionCompleta": producto.descripcion_completa,
         "precioBase": str(producto.precio_base),
+        "moneda": producto.moneda,
         "estadoProducto": producto.estado_producto,
         "declaracionPropiedad": producto.declaracion_propiedad,
         "fotos": fotos,
+        "detalleArtistico": detalle_artistico,
     }
