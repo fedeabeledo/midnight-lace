@@ -41,8 +41,9 @@ MOTIVOS_RECHAZO = [
 async def crear_producto(
     db: AsyncSession,
     duenio_id: int,
-    titulo: str,
+    nombre: str,
     estado: str,
+    descripcion_catalogo: str,
     descripcion_completa: str,
     declaracion_propiedad: bool,
     precio_base: Decimal,
@@ -52,7 +53,6 @@ async def crear_producto(
     componentes: list[dict] | None = None,
 ) -> dict:
     producto = Producto(
-        titulo=titulo,
         estado=estado,
         fecha=date.today(),
         disponible="no",
@@ -377,7 +377,7 @@ async def _serializar_producto(db: AsyncSession, producto: Producto, moneda: str
 
     return {
         "identificador": producto.identificador,
-        "titulo": producto.titulo,
+        "nombre": producto.nombre,
         "estado": producto.estado,
         "fecha": producto.fecha,
         "disponible": producto.disponible,
@@ -403,7 +403,7 @@ def _serializar_producto_lista(
 ) -> dict:
     return {
         "identificador": producto.identificador,
-        "titulo": producto.titulo,
+        "nombre": producto.nombre,
         "estado": producto.estado,
         "fecha": producto.fecha,
         "disponible": producto.disponible,

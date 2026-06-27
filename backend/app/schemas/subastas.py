@@ -89,7 +89,7 @@ class SolicitudAgregarItemCatalogo(BaseModel):
 class ItemCatalogoResponse(BaseModel):
     identificador: int
     id_producto: int = Field(alias="idProducto")
-    titulo: str | None = None
+    nombre: str | None = None
     estado: Literal["nuevo", "usado"] | None = None
     fotos: list[FotoResponse] = Field(default_factory=list, max_length=1)
     descripcion_catalogo: str | None = Field(None, alias="descripcionCatalogo")

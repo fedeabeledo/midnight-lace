@@ -47,7 +47,7 @@ class DepositoResponse(BaseModel):
 
 class ProductoResponse(BaseModel):
     identificador: int
-    titulo: str
+    nombre: str
     estado: Literal["nuevo", "usado"]
     fecha: date | None = None
     disponible: str | None = None

@@ -298,7 +298,7 @@ async def agregar_item_catalogo(
     return {
         "identificador": item.identificador,
         "idProducto": producto_id,
-        "titulo": producto.titulo,
+        "nombre": producto.nombre,
         "estado": producto.estado,
         "descripcionCatalogo": producto.descripcion_catalogo,
         "precioBase": str(item.precio_base),
@@ -385,7 +385,7 @@ async def get_catalogo(
         items_data.append({
             "identificador": item.identificador,
             "idProducto": item.producto,
-            "titulo": producto.titulo if producto else None,
+            "nombre": producto.nombre if producto else None,
             "estado": producto.estado if producto else None,
             "fotos": [primera_foto] if primera_foto else [],
             "descripcionCatalogo": producto.descripcion_catalogo if producto else None,
@@ -461,7 +461,7 @@ async def get_pool_productos(
         persona = personas_por_id.get(p.duenio)
         datos.append({
             "identificador": p.identificador,
-            "titulo": p.titulo,
+            "nombre": p.nombre,
             "estado": p.estado,
             "descripcionCompleta": p.descripcion_completa,
             "precioBase": str(p.precio_base),

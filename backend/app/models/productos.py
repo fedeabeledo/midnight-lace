@@ -14,7 +14,6 @@ class Producto(Base):
     )
 
     identificador: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    titulo: Mapped[str] = mapped_column(String(200), nullable=False)
     estado: Mapped[str] = mapped_column(String(5), nullable=False)
     fecha: Mapped[date | None] = mapped_column(Date, nullable=True)
     disponible: Mapped[str | None] = mapped_column(String(2), nullable=True)

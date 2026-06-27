@@ -22,8 +22,9 @@ router = APIRouter(prefix="/v1/productos", tags=["Productos"])
 async def crear_producto(
     user: dict = Depends(require_role("comprador")),
     db: AsyncSession = Depends(get_db),
-    titulo: str = Form(..., min_length=1, max_length=200),
+    nombre: str = Form(..., min_length=1, max_length=80),
     estado: Literal["nuevo", "usado"] = Form(...),
+    descripcionCatalogo: str = Form(..., min_length=1, max_length=500),
     descripcionCompleta: str = Form(..., max_length=2000),
     declaracionPropiedad: bool = Form(...),
     precioBase: float = Form(..., gt=0.01),
@@ -103,8 +104,9 @@ async def crear_producto(
     producto = await productos_service.crear_producto(
         db=db,
         duenio_id=user["identificador"],
-        titulo=titulo,
+        nombre=nombre,
         estado=estado,
+        descripcion_catalogo=descripcionCatalogo,
         descripcion_completa=descripcionCompleta,
         declaracion_propiedad=declaracionPropiedad,
         precio_base=precioBase,

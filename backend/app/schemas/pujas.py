@@ -27,7 +27,7 @@ class PujaResponse(BaseModel):
 
 class EstadoPujaActualResponse(BaseModel):
     id_item: int = Field(alias="idItem")
-    titulo: str | None = None
+    nombre: str | None = None
     estado: Literal["nuevo", "usado"] | None = None
     descripcion_producto: str | None = Field(None, alias="descripcionProducto")
     precio_base: str = Field(alias="precioBase")
