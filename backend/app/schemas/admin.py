@@ -15,6 +15,26 @@ class SolicitudActualizarCliente(BaseModel):
             raise ValueError(f"categoria debe ser una de: {', '.join(sorted(CATEGORIAS_VALIDAS))}")
 
 
+class SolicitudVerificarCliente(BaseModel):
+    aprobado: bool
+    categoria: str | None = None
+
+    def model_post_init(self, __context):
+        if self.aprobado and not self.categoria:
+            raise ValueError("categoria es requerida al aprobar")
+        if self.categoria and self.categoria not in CATEGORIAS_VALIDAS:
+            raise ValueError(f"categoria debe ser una de: {', '.join(sorted(CATEGORIAS_VALIDAS))}")
+
+
+class SolicitudVerificarProducto(BaseModel):
+    aprobado: bool
+    motivo: str | None = None
+
+    def model_post_init(self, __context):
+        if not self.aprobado and not self.motivo:
+            raise ValueError("motivo es requerido al rechazar")
+
+
 class SolicitudCrearSubastador(BaseModel):
     documento: str
     nombre: str

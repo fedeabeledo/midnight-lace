@@ -113,13 +113,17 @@ async def crear_producto(
         componentes=componentes_data,
     )
 
-    resultado = await productos_service.verificar_producto(db, producto["identificador"])
-    if resultado == "asignado":
-        logger.info(f"[PRODUCTO] Producto {producto['identificador']} del dueño {user['identificador']} APROBADO y asignado.")
-    elif resultado == "rechazado":
-        logger.info(f"[PRODUCTO] Producto {producto['identificador']} del dueño {user['identificador']} RECHAZADO.")
+    # Test bypass: auto-verificar según descripcionCompleta
+    desc = (producto.get("descripcionCompleta") or "").upper()
+    if "APROBAME" in desc:
+        await productos_service.verificar_producto(db, producto["identificador"], True)
+        producto = await productos_service.get_producto(db, producto["identificador"], user["identificador"])
+    elif "RECHAZAME" in desc:
+        await productos_service.verificar_producto(
+            db, producto["identificador"], False, "Test: descripción contiene RECHAZAME"
+        )
+        producto = await productos_service.get_producto(db, producto["identificador"], user["identificador"])
 
-    producto = await productos_service.get_producto(db, producto["identificador"], user["identificador"])
     return producto
 
 

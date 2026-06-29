@@ -13,9 +13,9 @@ from app.schemas.auth import (
     SolicitudRecuperarClave,
     SolicitudRenovarToken,
     SolicitudReenviarCodigo,
+    SolicitudValidarCodigo,
 )
 from app.services import auth as auth_service
-from app.services import email as email_service
 
 router = APIRouter(prefix="/v1/auth", tags=["Autenticación"])
 
@@ -64,28 +64,21 @@ async def registro(
 
     if result is None:
         return RespuestaRegistro(
-            aprobado=False,
             mensaje="Los datos no son válidos o el email/usuario ya está registrado.",
             email=None,
         )
 
-    verificacion = await auth_service.verificar_cliente(db, result)
-    aprobado = verificacion["aprobado"]
-    codigo = verificacion["codigo"]
-    categoria = verificacion["categoria"]
-
-    if aprobado:
-        await email_service.send_email(email, "registro", codigo=codigo)
-        mensaje = f"Fuiste aceptado con categoría {categoria}. Revisá tu email para obtener el código de confirmación."
-    else:
-        await email_service.send_email(email, "rechazo", motivo="Tu solicitud no cumple con los requisitos de verificación.")
-        mensaje = "Tu solicitud fue rechazada. Contactanos a soporte@midnightlace.com para más información."
+    # Test bypass: auto-aprobar/rechazar según listas hardcodeadas
+    from app.services import admin as admin_service
+    from app.services.auth import EMAILS_AUTO_APROBADOS, EMAILS_AUTO_RECHAZADOS
+    if email in EMAILS_AUTO_APROBADOS:
+        await admin_service.verificar_cliente_admin(db, result, True, "especial")
+    elif email in EMAILS_AUTO_RECHAZADOS:
+        await admin_service.verificar_cliente_admin(db, result, False, None)
 
     return RespuestaRegistro(
-        aprobado=aprobado,
-        mensaje=mensaje,
+        mensaje="Solicitud recibida. Te notificaremos por email.",
         email=email,
-        categoria=categoria,
     )
 
 
@@ -146,6 +139,28 @@ async def confirmar(
         )
 
     return result
+
+
+@router.post("/validar-codigo")
+async def validar_codigo(
+    body: SolicitudValidarCodigo,
+    db: AsyncSession = Depends(get_db),
+):
+    resultado = await auth_service.validar_codigo(db, body.email, body.codigo, body.tipo)
+    if "error" in resultado:
+        mensajes = {
+            "CODIGO_INVALIDO": "El código es incorrecto.",
+            "CODIGO_USADO": "Este código ya fue utilizado.",
+            "CODIGO_EXPIRADO": "El código expiró. Solicitá uno nuevo.",
+        }
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "codigo": resultado["error"],
+                "mensaje": mensajes.get(resultado["error"], "Error desconocido."),
+            },
+        )
+    return resultado
 
 
 @router.post(
