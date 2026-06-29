@@ -150,6 +150,34 @@ async def listar_multas(
     }
 
 
+async def verificar_cliente_admin(
+    db: AsyncSession, cliente_id: int, aprobado: bool, categoria: str | None
+) -> dict | None:
+    from app.services import auth as auth_service
+    from app.services import email as email_service
+    persona = await db.get(Persona, cliente_id)
+    if persona is None:
+        return None
+    resultado = await auth_service.verificar_cliente(db, cliente_id, aprobado, categoria)
+    if resultado is None:
+        return None
+    if aprobado:
+        await email_service.send_email(persona.email, "registro", codigo=resultado["codigo"])
+    else:
+        await email_service.send_email(
+            persona.email, "rechazo",
+            motivo="Tu solicitud no cumple los requisitos de verificación."
+        )
+    return resultado
+
+
+async def verificar_producto_admin(
+    db: AsyncSession, producto_id: int, aprobado: bool, motivo: str | None
+) -> str | None:
+    from app.services.productos import verificar_producto
+    return await verificar_producto(db, producto_id, aprobado, motivo)
+
+
 async def crear_subastador(db: AsyncSession, datos: dict) -> dict:
     persona = Persona(
         documento=datos["documento"],

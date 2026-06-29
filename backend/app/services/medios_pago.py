@@ -18,6 +18,31 @@ CATEGORIAS = ["comun", "especial", "plata", "oro", "platino"]
 logger = logging.getLogger(__name__)
 
 
+def _test_verificado(tipo: str, detalle: dict) -> bool | None:
+    if tipo == "tarjetaCredito":
+        red = (detalle.get("red") or "").upper()
+        if "APROBAME" in red:
+            return True
+        if "RECHAZAME" in red:
+            return False
+    elif tipo == "cuentaBancaria":
+        banco = (detalle.get("nombre_banco") or "").upper()
+        if "APROBAME" in banco:
+            return True
+        if "RECHAZAME" in banco:
+            return False
+    elif tipo == "chequeCertificado":
+        monto = detalle.get("monto_garantizado")
+        try:
+            if float(monto) == 77777:
+                return True
+            if float(monto) == 69420:
+                return False
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
 def _agregar_detalle(
     db: AsyncSession,
     medio_id: int,
@@ -100,13 +125,16 @@ async def crear_medio(
         cliente=cliente_id,
         tipo=tipo,
         moneda=moneda,
-        verificado="si",
+        verificado="no",
         activo="si",
     )
     db.add(medio)
     await db.flush()
 
     _agregar_detalle(db, medio.identificador, tipo, detalle)
+
+    if _test_verificado(tipo, detalle) is True:
+        medio.verificado = "si"
 
     cliente = await db.get(Cliente, cliente_id)
     categoria_anterior = cliente.categoria if cliente else None
@@ -178,8 +206,11 @@ async def actualizar_medio(
 
     medio.tipo = tipo
     medio.moneda = moneda
-    medio.verificado = "si"
+    medio.verificado = "no"
     _agregar_detalle(db, medio_id, tipo, detalle)
+
+    if _test_verificado(tipo, detalle) is True:
+        medio.verificado = "si"
 
     await db.commit()
     return await _serializar_medio(db, medio)
@@ -260,7 +291,7 @@ async def _serializar_medio(db: AsyncSession, medio: MedioDePago) -> dict:
         "identificador": medio.identificador,
         "tipo": medio.tipo,
         "moneda": medio.moneda,
-        "verificado": "si",
+        "verificado": medio.verificado,
         "activo": medio.activo,
         "detalle": detalle,
     }

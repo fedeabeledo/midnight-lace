@@ -91,12 +91,12 @@ async def crear_producto(
     return await _serializar_producto(db, producto, moneda=moneda)
 
 
-async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
+async def verificar_producto(
+    db: AsyncSession, producto_id: int, aprobado: bool, motivo: str | None = None
+) -> str | None:
     producto = await db.get(Producto, producto_id)
     if producto is None or producto.estado_producto != "pendiente":
         return None
-
-    aprobado = random.random() < 0.70
 
     if aprobado:
         result = await db.execute(select(Subastador.identificador).order_by(Subastador.identificador))
@@ -135,7 +135,7 @@ async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
         producto.estado_producto = "rechazado"
         await db.flush()
 
-        motivo = random.choice(MOTIVOS_RECHAZO)
+        motivo = motivo or random.choice(MOTIVOS_RECHAZO)
         datos_rechazo = {"idProducto": producto_id, "motivo": motivo}
         db.add(Notificacion(
             persona=producto.duenio,
