@@ -191,7 +191,8 @@ async def validar_codigo(db: AsyncSession, email: str, codigo: str, tipo: str) -
         return {"error": "CODIGO_INVALIDO"}
     row = await _obtener_codigo_valido(db, persona.identificador, codigo, tipo)
     if row is not None:
-        return {"valido": True}
+        cliente = await db.get(Cliente, persona.identificador) if tipo == "registro" else None
+        return {"valido": True, "categoria": cliente.categoria if cliente else None}
     any_row = await db.scalar(
         select(CodigoVerificacion).where(
             CodigoVerificacion.persona == persona.identificador,

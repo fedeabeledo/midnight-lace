@@ -65,6 +65,30 @@ async def actualizar_cliente(
     return resultado
 
 
+
+
+@router.get("/medios-pago")
+async def listar_medios_pago(
+    pagina: int = Query(1, ge=1),
+    cantidad: int = Query(20, ge=1, le=100),
+    verificado: Literal["si", "no"] | None = Query(None),
+    user: dict = Depends(require_role("empleado")),
+    db: AsyncSession = Depends(get_db),
+):
+    return await service.listar_medios_pago(db, pagina, cantidad, verificado)
+
+
+@router.get("/productos")
+async def listar_productos(
+    pagina: int = Query(1, ge=1),
+    cantidad: int = Query(20, ge=1, le=100),
+    estado: str | None = Query(None),
+    user: dict = Depends(require_role("empleado")),
+    db: AsyncSession = Depends(get_db),
+):
+    return await service.listar_productos_admin(db, pagina, cantidad, estado)
+
+
 @router.get("/multas")
 async def listar_multas(
     pagina: int = Query(1, ge=1),
