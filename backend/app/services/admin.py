@@ -15,6 +15,7 @@ from app.models.productos import Foto, Producto
 from app.models.multas import Multa
 from app.models.personas import Persona, Empleado
 from app.models.subastadores import Subastador
+from app.services.notificaciones import crear_y_push
 
 
 def _serializar_cliente(persona: Persona, cliente: Cliente) -> dict:
@@ -328,6 +329,11 @@ async def verificar_cliente_admin(
         return None
     if aprobado:
         await email_service.send_email(persona.email, "registro", codigo=resultado["codigo"])
+        await crear_y_push(db, cliente_id, "cuenta_verificada", {
+            "idCliente": cliente_id,
+            "categoria": resultado.get("categoria") or categoria,
+            "aprobado": True,
+        })
     else:
         await email_service.send_email(
             persona.email, "rechazo",

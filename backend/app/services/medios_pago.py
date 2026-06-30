@@ -13,6 +13,7 @@ from app.models import (
     TarjetaCredito,
     ChequeCertificado,
 )
+from app.services.notificaciones import crear_y_push
 
 CATEGORIAS = ["comun", "especial", "plata", "oro", "platino"]
 logger = logging.getLogger(__name__)
@@ -213,7 +214,15 @@ async def actualizar_medio(
         medio.verificado = "si"
 
     await db.commit()
-    return await _serializar_medio(db, medio)
+    medio_serializado = await _serializar_medio(db, medio)
+    if medio.verificado == "si":
+        await crear_y_push(db, medio.cliente, "medio_verificado", {
+            "idMedioPago": medio.identificador,
+            "tipo": medio.tipo,
+            "moneda": medio.moneda,
+            "verificado": medio.verificado,
+        })
+    return medio_serializado
 
 
 async def desactivar_medio(
@@ -243,7 +252,14 @@ async def verificar_medio(db: AsyncSession, medio_id: int, empleado_id: int) -> 
             cheque.verificado_por = empleado_id
 
     await db.commit()
-    return await _serializar_medio(db, medio)
+    medio_serializado = await _serializar_medio(db, medio)
+    await crear_y_push(db, medio.cliente, "medio_verificado", {
+        "idMedioPago": medio.identificador,
+        "tipo": medio.tipo,
+        "moneda": medio.moneda,
+        "verificado": medio.verificado,
+    })
+    return medio_serializado
 
 
 async def _serializar_medio(db: AsyncSession, medio: MedioDePago) -> dict:

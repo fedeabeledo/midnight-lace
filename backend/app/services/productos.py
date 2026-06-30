@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ws_manager import ws_manager
+from app.services.notificaciones import crear_y_push
 from app.models import (
     Catalogo,
     ItemCatalogo,
@@ -128,6 +129,12 @@ async def verificar_producto(
 
         producto.estado_producto = "asignado"
         await db.commit()
+        await crear_y_push(db, producto.duenio, "producto_aceptado", {
+            "idProducto": producto.identificador,
+            "estadoProducto": producto.estado_producto,
+            "deposito": producto.deposito,
+            "seguro": producto.seguro,
+        })
 
         logger.info(f"[VERIFICACION] Producto {producto_id} APROBADO — seguro: {producto.seguro}, depósito: {producto.deposito}")
         return "asignado"
