@@ -17,6 +17,7 @@ from app.core.security import (
 from app.models import Cliente, Duenio, Empleado, Subastador, Persona
 from app.models.codigos_verificacion import CodigoVerificacion
 from app.services import email as email_service
+from app.services.notificaciones import push_to_empleados
 
 UPLOADS_DIR = Path("uploads")
 UPLOADS_DIR.mkdir(exist_ok=True)
@@ -103,6 +104,12 @@ async def registrar_comprador(
     )
     db.add(cliente)
     await db.commit()
+    await push_to_empleados(db, "admin_cliente_pendiente", {
+        "idCliente": persona.identificador,
+        "nombre": persona.nombre,
+        "apellido": persona.apellido,
+        "email": persona.email,
+    })
     return persona.identificador
 
 

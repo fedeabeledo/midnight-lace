@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ws_manager import ws_manager
 from app.services.notificaciones import crear_y_push
+from app.services.notificaciones import push_to_empleados
 from app.models import (
     Catalogo,
     ItemCatalogo,
@@ -89,6 +90,12 @@ async def crear_producto(
             ))
 
     await db.commit()
+    await push_to_empleados(db, "admin_producto_pendiente", {
+        "idProducto": producto.identificador,
+        "idDuenio": producto.duenio,
+        "nombre": producto.nombre,
+        "estadoProducto": producto.estado_producto,
+    })
     return await _serializar_producto(db, producto, moneda=moneda)
 
 

@@ -14,6 +14,7 @@ from app.models import (
     ChequeCertificado,
 )
 from app.services.notificaciones import crear_y_push
+from app.services.notificaciones import push_to_empleados
 
 CATEGORIAS = ["comun", "especial", "plata", "oro", "platino"]
 logger = logging.getLogger(__name__)
@@ -169,6 +170,14 @@ async def crear_medio(
     logger.info(category_log)
 
     await db.commit()
+    if medio.verificado != "si":
+        await push_to_empleados(db, "admin_medio_pago_pendiente", {
+            "idMedioPago": medio.identificador,
+            "idCliente": medio.cliente,
+            "tipo": medio.tipo,
+            "moneda": medio.moneda,
+            "verificado": medio.verificado,
+        })
 
     respuesta = await _serializar_medio(db, medio)
     respuesta.update({
@@ -218,6 +227,14 @@ async def actualizar_medio(
     if medio.verificado == "si":
         await crear_y_push(db, medio.cliente, "medio_verificado", {
             "idMedioPago": medio.identificador,
+            "tipo": medio.tipo,
+            "moneda": medio.moneda,
+            "verificado": medio.verificado,
+        })
+    else:
+        await push_to_empleados(db, "admin_medio_pago_pendiente", {
+            "idMedioPago": medio.identificador,
+            "idCliente": medio.cliente,
             "tipo": medio.tipo,
             "moneda": medio.moneda,
             "verificado": medio.verificado,
