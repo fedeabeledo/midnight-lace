@@ -213,12 +213,36 @@ async def listar_productos_duenio(
             "historia": d.historia,
         }
 
+    motivos_por_producto: dict[int, str] = {}
+    rechazados_ids = [
+        p.identificador for p in productos if p.estado_producto == "rechazado"
+    ]
+    if rechazados_ids:
+        notificaciones_result = await db.execute(
+            select(Notificacion)
+            .where(
+                Notificacion.persona == duenio_id,
+                Notificacion.tipo == "producto_rechazado",
+            )
+            .order_by(Notificacion.identificador.desc())
+        )
+        for notif in notificaciones_result.scalars().all():
+            try:
+                detalle = json.loads(notif.detalle)
+            except json.JSONDecodeError:
+                continue
+
+            id_producto = detalle.get("idProducto")
+            if id_producto in rechazados_ids and id_producto not in motivos_por_producto:
+                motivos_por_producto[id_producto] = detalle.get("motivo") or "Sin motivo especificado."
+
     datos = []
     for p in productos:
         datos.append(_serializar_producto_lista(
             p,
             fotos_por_producto.get(p.identificador, []),
             detalles_por_producto.get(p.identificador),
+            motivos_por_producto.get(p.identificador),
         ))
 
     return {
@@ -411,6 +435,7 @@ def _serializar_producto_lista(
     producto: Producto,
     fotos: list[dict],
     detalle_artistico: dict | None = None,
+    motivo_rechazo: str | None = None,
 ) -> dict:
     return {
         "identificador": producto.identificador,
@@ -425,4 +450,5 @@ def _serializar_producto_lista(
         "declaracionPropiedad": producto.declaracion_propiedad,
         "fotos": fotos,
         "detalleArtistico": detalle_artistico,
+        "motivoRechazo": motivo_rechazo,
     }
