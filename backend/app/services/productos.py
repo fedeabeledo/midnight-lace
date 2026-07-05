@@ -44,6 +44,7 @@ async def crear_producto(
     db: AsyncSession,
     duenio_id: int,
     nombre: str,
+    estado: str,
     descripcion_catalogo: str,
     descripcion_completa: str,
     declaracion_propiedad: bool,
@@ -54,6 +55,7 @@ async def crear_producto(
     componentes: list[dict] | None = None,
 ) -> dict:
     producto = Producto(
+        estado=estado,
         fecha=date.today(),
         disponible="no",
         nombre=nombre,
@@ -253,7 +255,9 @@ async def listar_productos_duenio(
 
 async def get_producto(db: AsyncSession, producto_id: int, duenio_id: int) -> dict | None:
     producto = await db.get(Producto, producto_id)
-    if producto is None or producto.duenio != duenio_id:
+    if producto is None:
+        return None
+    if producto.duenio != duenio_id and producto.estado_producto not in ["asignado", "en_subasta", "subastado", "vendido"]:
         return None
     return await _serializar_producto(db, producto)
 
@@ -414,6 +418,7 @@ async def _serializar_producto(db: AsyncSession, producto: Producto, moneda: str
     return {
         "identificador": producto.identificador,
         "nombre": producto.nombre,
+        "estado": producto.estado,
         "fecha": producto.fecha,
         "disponible": producto.disponible,
         "descripcionCatalogo": producto.descripcion_catalogo,
@@ -440,6 +445,7 @@ def _serializar_producto_lista(
     return {
         "identificador": producto.identificador,
         "nombre": producto.nombre,
+        "estado": producto.estado,
         "fecha": producto.fecha,
         "disponible": producto.disponible,
         "descripcionCatalogo": producto.descripcion_catalogo,

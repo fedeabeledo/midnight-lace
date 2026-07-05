@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.productos import FotoResponse
+
 
 class SubastaResponse(BaseModel):
     identificador: int
@@ -87,7 +89,10 @@ class SolicitudAgregarItemCatalogo(BaseModel):
 class ItemCatalogoResponse(BaseModel):
     identificador: int
     id_producto: int = Field(alias="idProducto")
-    descripcion_producto: str | None = Field(None, alias="descripcionProducto")
+    nombre: str | None = None
+    estado: Literal["nuevo", "usado"] | None = None
+    fotos: list[FotoResponse] = Field(default_factory=list, max_length=1)
+    descripcion_catalogo: str | None = Field(None, alias="descripcionCatalogo")
     precio_base: str | None = Field(None, alias="precioBase")
     orden: int
     comision: str
@@ -98,11 +103,19 @@ class ItemCatalogoResponse(BaseModel):
     model_config = {"from_attributes": True, "populate_by_name": True}
 
 
+class CatalogoMetaResponse(BaseModel):
+    pagina: int
+    cantidad: int
+    total: int
+    total_paginas: int
+
+
 class CatalogoResponse(BaseModel):
     identificador: int
     descripcion: str
     id_subasta: int | None = Field(None, alias="idSubasta")
     id_subastador: int | None = Field(None, alias="idSubastador")
     items: list[ItemCatalogoResponse] = []
+    meta: CatalogoMetaResponse | None = None
 
     model_config = {"from_attributes": True, "populate_by_name": True}

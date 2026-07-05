@@ -14,9 +14,11 @@ from app.models import (
     Cliente,
     Duenio,
     Empleado,
+    Foto,
     Multa,
     Notificacion,
     Persona,
+    Producto,
     Pujo,
     RegistroDeSubasta,
     Subastador,
@@ -60,8 +62,29 @@ async def _token_fresco(db: AsyncSession, persona_id: int) -> dict:
     }
 
 
-def _serializar_registro(r: RegistroDeSubasta) -> dict:
+async def _detalles_producto_dict(db: AsyncSession, producto_id: int) -> dict | None:
+    if not producto_id:
+        return None
+    p = await db.get(Producto, producto_id)
+    if not p:
+        return None
+    foto_res = await db.execute(
+        select(Foto).where(Foto.producto == producto_id).order_by(Foto.orden.asc())
+    )
+    fotos = [f.foto for f in foto_res.scalars().all()]
     return {
+        "identificador": p.identificador,
+        "nombre": p.nombre,
+        "codigo": f"PROD-{p.identificador:03d}",
+        "descripcionCatalogo": p.descripcion_catalogo or p.descripcion_completa or "",
+        "descripcionCompleta": p.descripcion_completa or "",
+        "estadoCondicion": p.estado,
+        "fotos": fotos,
+    }
+
+
+def _serializar_registro(r: RegistroDeSubasta, prod_dict: dict | None = None) -> dict:
+    res = {
         "identificador": r.identificador,
         "subasta": r.subasta,
         "producto": r.producto,
@@ -74,6 +97,9 @@ def _serializar_registro(r: RegistroDeSubasta) -> dict:
         "fechaPago": r.fecha_pago.isoformat() if r.fecha_pago else None,
         "fechaVencimiento": r.fecha_vencimiento.isoformat() if r.fecha_vencimiento else None,
     }
+    if prod_dict:
+        res["detallesProducto"] = prod_dict
+    return res
 
 
 def _paginar(total: int, pagina: int, cantidad: int) -> dict:
@@ -147,8 +173,34 @@ async def listar_compras(db: AsyncSession, cliente_id: int, pagina: int, cantida
     offset = (pagina - 1) * cantidad
     result = await db.execute(base.order_by(RegistroDeSubasta.identificador.desc()).offset(offset).limit(cantidad))
     registros = result.scalars().all()
+
+    prod_ids = list({r.producto for r in registros if r.producto})
+    prod_map = {}
+    if prod_ids:
+        prod_res = await db.execute(select(Producto).where(Producto.identificador.in_(prod_ids)))
+        productos = prod_res.scalars().all()
+
+        foto_res = await db.execute(
+            select(Foto).where(Foto.producto.in_(prod_ids)).order_by(Foto.orden.asc())
+        )
+        fotos = foto_res.scalars().all()
+        fotos_map = {}
+        for f in fotos:
+            fotos_map.setdefault(f.producto, []).append(f.foto)
+
+        for p in productos:
+            prod_map[p.identificador] = {
+                "identificador": p.identificador,
+                "nombre": p.nombre,
+                "codigo": f"PROD-{p.identificador:03d}",
+                "descripcionCatalogo": p.descripcion_catalogo or p.descripcion_completa or "",
+                "descripcionCompleta": p.descripcion_completa or "",
+                "estadoCondicion": p.estado,
+                "fotos": fotos_map.get(p.identificador, []),
+            }
+
     return {
-        "datos": [_serializar_registro(r) for r in registros],
+        "datos": [_serializar_registro(r, prod_map.get(r.producto)) for r in registros],
         "meta": _paginar(total, pagina, cantidad),
     }
 

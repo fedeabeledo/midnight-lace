@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.dependencies import require_role
+from app.schemas.subastas import CatalogoResponse
 from app.services import subastas as subastas_service
 
 router = APIRouter(prefix="/v1/subastas", tags=["Subastas"])
@@ -38,7 +39,7 @@ async def ver_subasta(
     return result
 
 
-@router.get("/{id}/catalogo")
+@router.get("/{id}/catalogo", response_model=CatalogoResponse)
 async def ver_catalogo(
     id: int,
     pagina: int = Query(1, ge=1),

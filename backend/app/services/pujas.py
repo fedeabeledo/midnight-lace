@@ -214,6 +214,10 @@ async def crear_puja(
     # 14. Enriquecer respuesta
     producto = await db.get(Producto, item.producto)
 
+    from app.models.personas import Persona
+    persona = await db.get(Persona, comprador_id)
+    nombre_usuario = persona.nombre_usuario if persona else f"Comprador #{comprador_id}"
+
     return {
         "identificador": puja.identificador,
         "idCliente": comprador_id,
@@ -230,6 +234,8 @@ async def crear_puja(
         },
         "producto": {
             "identificador": producto.identificador if producto else None,
+            "nombre": producto.nombre if producto else None,
+            "estado": producto.estado if producto else None,
             "descripcionCatalogo": producto.descripcion_catalogo if producto else None,
         },
         "_broadcast": {
@@ -237,6 +243,9 @@ async def crear_puja(
             "importe": str(puja.importe),
             "pujaMinima": str(nueva_puja_minima),
             "pujaMaxima": str(nueva_puja_maxima) if nueva_puja_maxima else None,
+            "idCliente": comprador_id,
+            "nombreUsuario": nombre_usuario,
+            "fotoPerfil": persona.url_foto_perfil if persona else None,
         },
     }
 
@@ -285,12 +294,23 @@ async def historial_pujas(
     subasta = await db.get(Subasta, subasta_id)
     producto = await db.get(Producto, item.producto)
 
+    from app.models.personas import Persona
+
     datos = []
     for puja in pujas:
         asistente = await db.get(Asistente, puja.asistente)
+        nombre_usuario = None
+        foto_perfil = None
+        if asistente:
+            persona = await db.get(Persona, asistente.cliente)
+            if persona:
+                nombre_usuario = persona.nombre_usuario
+                foto_perfil = persona.url_foto_perfil
         datos.append({
             "identificador": puja.identificador,
             "idCliente": asistente.cliente if asistente else None,
+            "nombreUsuario": nombre_usuario,
+            "fotoPerfil": foto_perfil,
             "idItem": puja.item,
             "importe": str(puja.importe),
             "ganador": puja.ganador,
@@ -304,6 +324,8 @@ async def historial_pujas(
             },
             "producto": {
                 "identificador": producto.identificador if producto else None,
+                "nombre": producto.nombre if producto else None,
+                "estado": producto.estado if producto else None,
                 "descripcionCatalogo": producto.descripcion_catalogo if producto else None,
             },
         })
@@ -387,6 +409,8 @@ async def item_actual(db: AsyncSession, subasta_id: int) -> dict:
 
     return {
         "idItem": item.identificador,
+        "nombre": producto.nombre if producto else None,
+        "estado": producto.estado if producto else None,
         "descripcionProducto": producto.descripcion_catalogo if producto else None,
         "precioBase": str(precio_base),
         "mejorOferta": str(ultima_oferta) if ultima_oferta > 0 else None,

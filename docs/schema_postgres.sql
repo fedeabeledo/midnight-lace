@@ -142,6 +142,9 @@ CREATE TABLE depositos (
 
 CREATE TABLE productos (
     identificador           SERIAL          NOT NULL,
+    titulo                  VARCHAR(200)    NOT NULL,
+    estado                  VARCHAR(5)      NOT NULL
+                            CONSTRAINT chkEstadoCondicion CHECK (estado IN ('nuevo', 'usado')),
     fecha                   DATE            NULL,
     disponible              VARCHAR(2)      NULL
                             CONSTRAINT chkD CHECK (disponible IN ('si', 'no')),
