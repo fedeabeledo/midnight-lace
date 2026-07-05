@@ -217,7 +217,9 @@ async def listar_productos_duenio(
 
 async def get_producto(db: AsyncSession, producto_id: int, duenio_id: int) -> dict | None:
     producto = await db.get(Producto, producto_id)
-    if producto is None or producto.duenio != duenio_id:
+    if producto is None:
+        return None
+    if producto.duenio != duenio_id and producto.estado_producto not in ["asignado", "en_subasta", "subastado", "vendido"]:
         return None
     return await _serializar_producto(db, producto)
 

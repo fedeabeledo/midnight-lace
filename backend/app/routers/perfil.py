@@ -1,7 +1,7 @@
 import logging
 from time import time_ns
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -80,3 +80,28 @@ async def actualizar_perfil(
         updated_profile.get("codigo_postal") if updated_profile else None,
     )
     return updated_profile
+
+
+@router.get("/{id}/publico")
+async def ver_perfil_publico(
+    id: int,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    data = await perfil_service.get_perfil(db, id)
+    if data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"codigo": "NO_ENCONTRADO", "mensaje": "Perfil no encontrado."},
+        )
+    return {
+        "identificador": data["identificador"],
+        "nombre_usuario": data["nombre_usuario"],
+        "nombre": data["nombre"],
+        "apellido": data["apellido"],
+        "url_foto_perfil": data["url_foto_perfil"],
+        "ciudad": data["ciudad"],
+        "region": data["region"],
+        "pais": data["pais"],
+        "rol": data["rol"]
+    }

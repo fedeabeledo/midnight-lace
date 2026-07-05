@@ -218,7 +218,7 @@ async def verificar_medio(db: AsyncSession, medio_id: int, empleado_id: int) -> 
 async def _serializar_medio(db: AsyncSession, medio: MedioDePago) -> dict:
     detalle = None
 
-    if medio.tipo == "cuentaBancaria":
+    if medio.tipo in ("cuentaBancaria", "cuenta_bancaria"):
         result = await db.execute(
             select(CuentaBancaria).where(CuentaBancaria.medio_pago == medio.identificador)
         )
@@ -230,7 +230,7 @@ async def _serializar_medio(db: AsyncSession, medio: MedioDePago) -> dict:
                 "idPais": cb.pais,
             }
 
-    elif medio.tipo == "tarjetaCredito":
+    elif medio.tipo in ("tarjetaCredito", "tarjeta_credito"):
         result = await db.execute(
             select(TarjetaCredito).where(TarjetaCredito.medio_pago == medio.identificador)
         )
@@ -244,7 +244,7 @@ async def _serializar_medio(db: AsyncSession, medio: MedioDePago) -> dict:
                 "esInternacional": tc.es_internacional,
             }
 
-    elif medio.tipo == "chequeCertificado":
+    elif medio.tipo in ("chequeCertificado", "cheque_certificado"):
         result = await db.execute(
             select(ChequeCertificado).where(ChequeCertificado.medio_pago == medio.identificador)
         )
