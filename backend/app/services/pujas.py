@@ -111,6 +111,11 @@ async def crear_puja(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"codigo": "MEDIO_PAGO_INACTIVO", "mensaje": "El medio de pago está desactivado."},
         )
+    if medio_pago.verificado != "si":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"codigo": "MEDIO_PAGO_NO_VERIFICADO", "mensaje": "El medio de pago no fue verificado por la empresa."},
+        )
 
     # 7. Verificar cheque certificado cubre puja + comisión (la compra total mínima conocida al pujar)
     if medio_pago.tipo == "chequeCertificado":

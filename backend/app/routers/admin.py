@@ -5,7 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.dependencies import require_role
-from app.schemas.admin import SolicitudActualizarCliente, SolicitudCrearSubastador
+from app.schemas.admin import (
+    SolicitudActualizarCliente,
+    SolicitudCrearSubastador,
+    SolicitudVerificarCliente,
+    SolicitudVerificarProducto,
+)
 from app.services import admin as service
 
 router = APIRouter(prefix="/v1/admin", tags=["Admin"])
@@ -60,6 +65,30 @@ async def actualizar_cliente(
     return resultado
 
 
+
+
+@router.get("/medios-pago")
+async def listar_medios_pago(
+    pagina: int = Query(1, ge=1),
+    cantidad: int = Query(20, ge=1, le=100),
+    verificado: Literal["si", "no"] | None = Query(None),
+    user: dict = Depends(require_role("empleado")),
+    db: AsyncSession = Depends(get_db),
+):
+    return await service.listar_medios_pago(db, pagina, cantidad, verificado)
+
+
+@router.get("/productos")
+async def listar_productos(
+    pagina: int = Query(1, ge=1),
+    cantidad: int = Query(20, ge=1, le=100),
+    estado: str | None = Query(None),
+    user: dict = Depends(require_role("empleado")),
+    db: AsyncSession = Depends(get_db),
+):
+    return await service.listar_productos_admin(db, pagina, cantidad, estado)
+
+
 @router.get("/multas")
 async def listar_multas(
     pagina: int = Query(1, ge=1),
@@ -69,6 +98,38 @@ async def listar_multas(
     db: AsyncSession = Depends(get_db),
 ):
     return await service.listar_multas(db, pagina, cantidad, pagada)
+
+
+@router.post("/clientes/{id}/verificar")
+async def verificar_cliente(
+    id: int,
+    body: SolicitudVerificarCliente,
+    user: dict = Depends(require_role("empleado")),
+    db: AsyncSession = Depends(get_db),
+):
+    resultado = await service.verificar_cliente_admin(db, id, body.aprobado, body.categoria)
+    if resultado is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"codigo": "NO_ENCONTRADO", "mensaje": "Cliente no encontrado o ya procesado."},
+        )
+    return resultado
+
+
+@router.post("/productos/{id}/verificar")
+async def verificar_producto(
+    id: int,
+    body: SolicitudVerificarProducto,
+    user: dict = Depends(require_role("empleado")),
+    db: AsyncSession = Depends(get_db),
+):
+    resultado = await service.verificar_producto_admin(db, id, body.aprobado, body.motivo)
+    if resultado is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"codigo": "NO_ENCONTRADO", "mensaje": "Producto no encontrado o ya procesado."},
+        )
+    return {"estado": resultado}
 
 
 @router.post("/subastadores", status_code=status.HTTP_201_CREATED)

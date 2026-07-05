@@ -99,7 +99,7 @@ async def listar_notificaciones(
     pagina: int = Query(1, ge=1),
     cantidad: int = Query(20, ge=1, le=100),
     leida: str | None = Query(None, pattern="^(si|no)$"),
-    user: dict = Depends(require_role("comprador", "duenio")),
+    user: dict = Depends(require_role("comprador", "duenio", "empleado")),
     db: AsyncSession = Depends(get_db),
 ):
     return await svc.listar_notificaciones(db, user["identificador"], pagina, cantidad, leida)
@@ -109,7 +109,7 @@ async def listar_notificaciones(
 async def marcar_leida(
     id: int,
     body: SolicitudMarcarLeida,
-    user: dict = Depends(require_role("comprador", "duenio")),
+    user: dict = Depends(require_role("comprador", "duenio", "empleado")),
     db: AsyncSession = Depends(get_db),
 ):
     return await svc.marcar_leida(db, id, user["identificador"], body.leida)

@@ -13,9 +13,36 @@ from app.models import (
     TarjetaCredito,
     ChequeCertificado,
 )
+from app.services.notificaciones import crear_y_push
+from app.services.notificaciones import push_to_empleados
 
 CATEGORIAS = ["comun", "especial", "plata", "oro", "platino"]
 logger = logging.getLogger(__name__)
+
+
+def _test_verificado(tipo: str, detalle: dict) -> bool | None:
+    if tipo == "tarjetaCredito":
+        red = (detalle.get("red") or "").upper()
+        if "APROBAME" in red:
+            return True
+        if "RECHAZAME" in red:
+            return False
+    elif tipo == "cuentaBancaria":
+        banco = (detalle.get("nombre_banco") or "").upper()
+        if "APROBAME" in banco:
+            return True
+        if "RECHAZAME" in banco:
+            return False
+    elif tipo == "chequeCertificado":
+        monto = detalle.get("monto_garantizado")
+        try:
+            if float(monto) == 77777:
+                return True
+            if float(monto) == 69420:
+                return False
+        except (TypeError, ValueError):
+            pass
+    return None
 
 
 def _agregar_detalle(
@@ -100,13 +127,16 @@ async def crear_medio(
         cliente=cliente_id,
         tipo=tipo,
         moneda=moneda,
-        verificado="si",
+        verificado="no",
         activo="si",
     )
     db.add(medio)
     await db.flush()
 
     _agregar_detalle(db, medio.identificador, tipo, detalle)
+
+    if _test_verificado(tipo, detalle) is True:
+        medio.verificado = "si"
 
     cliente = await db.get(Cliente, cliente_id)
     categoria_anterior = cliente.categoria if cliente else None
@@ -140,6 +170,14 @@ async def crear_medio(
     logger.info(category_log)
 
     await db.commit()
+    if medio.verificado != "si":
+        await push_to_empleados(db, "admin_medio_pago_pendiente", {
+            "idMedioPago": medio.identificador,
+            "idCliente": medio.cliente,
+            "tipo": medio.tipo,
+            "moneda": medio.moneda,
+            "verificado": medio.verificado,
+        })
 
     respuesta = await _serializar_medio(db, medio)
     respuesta.update({
@@ -178,11 +216,30 @@ async def actualizar_medio(
 
     medio.tipo = tipo
     medio.moneda = moneda
-    medio.verificado = "si"
+    medio.verificado = "no"
     _agregar_detalle(db, medio_id, tipo, detalle)
 
+    if _test_verificado(tipo, detalle) is True:
+        medio.verificado = "si"
+
     await db.commit()
-    return await _serializar_medio(db, medio)
+    medio_serializado = await _serializar_medio(db, medio)
+    if medio.verificado == "si":
+        await crear_y_push(db, medio.cliente, "medio_verificado", {
+            "idMedioPago": medio.identificador,
+            "tipo": medio.tipo,
+            "moneda": medio.moneda,
+            "verificado": medio.verificado,
+        })
+    else:
+        await push_to_empleados(db, "admin_medio_pago_pendiente", {
+            "idMedioPago": medio.identificador,
+            "idCliente": medio.cliente,
+            "tipo": medio.tipo,
+            "moneda": medio.moneda,
+            "verificado": medio.verificado,
+        })
+    return medio_serializado
 
 
 async def desactivar_medio(
@@ -212,7 +269,14 @@ async def verificar_medio(db: AsyncSession, medio_id: int, empleado_id: int) -> 
             cheque.verificado_por = empleado_id
 
     await db.commit()
-    return await _serializar_medio(db, medio)
+    medio_serializado = await _serializar_medio(db, medio)
+    await crear_y_push(db, medio.cliente, "medio_verificado", {
+        "idMedioPago": medio.identificador,
+        "tipo": medio.tipo,
+        "moneda": medio.moneda,
+        "verificado": medio.verificado,
+    })
+    return medio_serializado
 
 
 async def _serializar_medio(db: AsyncSession, medio: MedioDePago) -> dict:
@@ -260,7 +324,7 @@ async def _serializar_medio(db: AsyncSession, medio: MedioDePago) -> dict:
         "identificador": medio.identificador,
         "tipo": medio.tipo,
         "moneda": medio.moneda,
-        "verificado": "si",
+        "verificado": medio.verificado,
         "activo": medio.activo,
         "detalle": detalle,
     }

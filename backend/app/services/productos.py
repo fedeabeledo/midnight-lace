@@ -9,6 +9,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ws_manager import ws_manager
+from app.services.notificaciones import crear_y_push
+from app.services.notificaciones import push_to_empleados
 from app.models import (
     Catalogo,
     ItemCatalogo,
@@ -90,15 +92,21 @@ async def crear_producto(
             ))
 
     await db.commit()
+    await push_to_empleados(db, "admin_producto_pendiente", {
+        "idProducto": producto.identificador,
+        "idDuenio": producto.duenio,
+        "nombre": producto.nombre,
+        "estadoProducto": producto.estado_producto,
+    })
     return await _serializar_producto(db, producto, moneda=moneda)
 
 
-async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
+async def verificar_producto(
+    db: AsyncSession, producto_id: int, aprobado: bool, motivo: str | None = None
+) -> str | None:
     producto = await db.get(Producto, producto_id)
     if producto is None or producto.estado_producto != "pendiente":
         return None
-
-    aprobado = random.random() < 0.70
 
     if aprobado:
         result = await db.execute(select(Subastador.identificador).order_by(Subastador.identificador))
@@ -130,6 +138,12 @@ async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
 
         producto.estado_producto = "asignado"
         await db.commit()
+        await crear_y_push(db, producto.duenio, "producto_aceptado", {
+            "idProducto": producto.identificador,
+            "estadoProducto": producto.estado_producto,
+            "deposito": producto.deposito,
+            "seguro": producto.seguro,
+        })
 
         logger.info(f"[VERIFICACION] Producto {producto_id} APROBADO — seguro: {producto.seguro}, depósito: {producto.deposito}")
         return "asignado"
@@ -137,7 +151,7 @@ async def verificar_producto(db: AsyncSession, producto_id: int) -> str | None:
         producto.estado_producto = "rechazado"
         await db.flush()
 
-        motivo = random.choice(MOTIVOS_RECHAZO)
+        motivo = motivo or random.choice(MOTIVOS_RECHAZO)
         datos_rechazo = {"idProducto": producto_id, "motivo": motivo}
         db.add(Notificacion(
             persona=producto.duenio,
@@ -201,12 +215,36 @@ async def listar_productos_duenio(
             "historia": d.historia,
         }
 
+    motivos_por_producto: dict[int, str] = {}
+    rechazados_ids = [
+        p.identificador for p in productos if p.estado_producto == "rechazado"
+    ]
+    if rechazados_ids:
+        notificaciones_result = await db.execute(
+            select(Notificacion)
+            .where(
+                Notificacion.persona == duenio_id,
+                Notificacion.tipo == "producto_rechazado",
+            )
+            .order_by(Notificacion.identificador.desc())
+        )
+        for notif in notificaciones_result.scalars().all():
+            try:
+                detalle = json.loads(notif.detalle)
+            except json.JSONDecodeError:
+                continue
+
+            id_producto = detalle.get("idProducto")
+            if id_producto in rechazados_ids and id_producto not in motivos_por_producto:
+                motivos_por_producto[id_producto] = detalle.get("motivo") or "Sin motivo especificado."
+
     datos = []
     for p in productos:
         datos.append(_serializar_producto_lista(
             p,
             fotos_por_producto.get(p.identificador, []),
             detalles_por_producto.get(p.identificador),
+            motivos_por_producto.get(p.identificador),
         ))
 
     return {
@@ -402,6 +440,7 @@ def _serializar_producto_lista(
     producto: Producto,
     fotos: list[dict],
     detalle_artistico: dict | None = None,
+    motivo_rechazo: str | None = None,
 ) -> dict:
     return {
         "identificador": producto.identificador,
@@ -417,4 +456,5 @@ def _serializar_producto_lista(
         "declaracionPropiedad": producto.declaracion_propiedad,
         "fotos": fotos,
         "detalleArtistico": detalle_artistico,
+        "motivoRechazo": motivo_rechazo,
     }

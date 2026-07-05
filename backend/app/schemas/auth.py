@@ -16,10 +16,8 @@ class SolicitudRegistro(BaseModel):
 
 
 class RespuestaRegistro(BaseModel):
-    aprobado: bool
     mensaje: str
-    email: EmailStr | None = None
-    categoria: str | None = None
+    email: str | None = None
 
 
 class SolicitudConfirmarCuenta(BaseModel):
@@ -59,8 +57,29 @@ class RespuestaLogin(BaseModel):
     token_renovacion: str = Field(alias="tokenRenovacion")
     roles: list[str]
     multa_impaga: bool = Field(alias="multaImpaga")
+    categoria: str | None = None
 
     model_config = {"populate_by_name": True}
+
+
+class SolicitudValidarCodigo(BaseModel):
+    email: EmailStr
+    codigo: str = Field(min_length=6, max_length=6)
+    tipo: str = Field(default="registro")
+
+    @field_validator("codigo")
+    @classmethod
+    def codigo_solo_numeros(cls, v: str) -> str:
+        if not v.isdigit():
+            raise ValueError("El código debe contener solo dígitos.")
+        return v
+
+    @field_validator("tipo")
+    @classmethod
+    def tipo_valido(cls, v: str) -> str:
+        if v not in ("registro", "recuperacion"):
+            raise ValueError("Tipo debe ser 'registro' o 'recuperacion'.")
+        return v
 
 
 class SolicitudRenovarToken(BaseModel):

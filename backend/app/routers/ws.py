@@ -8,6 +8,7 @@ from app.core.ws_manager import ws_manager
 from app.models import (
     Asistente,
     Cliente,
+    Empleado,
     Multa,
     Persona,
     Subasta,
@@ -53,7 +54,14 @@ async def _authenticate_ws(websocket: WebSocket, rechazar_multa: bool = True) ->
         cliente = await db.scalar(
             select(Cliente).where(Cliente.identificador == user_id)
         )
-        if cliente is None:
+        empleado = await db.scalar(
+            select(Empleado).where(Empleado.identificador == user_id)
+        )
+        if cliente is None and empleado is None:
+            await websocket.close(code=4001)
+            return None
+
+        if rechazar_multa and cliente is None:
             await websocket.close(code=4001)
             return None
 

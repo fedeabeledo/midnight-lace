@@ -17,12 +17,16 @@ from app.core.security import (
 from app.models import Cliente, Duenio, Empleado, Subastador, Persona
 from app.models.codigos_verificacion import CodigoVerificacion
 from app.services import email as email_service
+from app.services.notificaciones import push_to_empleados
 
 UPLOADS_DIR = Path("uploads")
 UPLOADS_DIR.mkdir(exist_ok=True)
 
 CODIGO_EXPIRACION_MINUTOS = 15
 CODIGO_REENVIO_MINIMO_SEGUNDOS = 60
+
+EMAILS_AUTO_APROBADOS = ["fedeabeledo01@gmail.com"]
+EMAILS_AUTO_RECHAZADOS = ["fedeabeledo02@gmail.com"]
 
 
 def save_upload(file_data: bytes, filename: str, subdir: str = "fotos") -> str:
@@ -100,6 +104,12 @@ async def registrar_comprador(
     )
     db.add(cliente)
     await db.commit()
+    await push_to_empleados(db, "admin_cliente_pendiente", {
+        "idCliente": persona.identificador,
+        "nombre": persona.nombre,
+        "apellido": persona.apellido,
+        "email": persona.email,
+    })
     return persona.identificador
 
 
@@ -160,40 +170,48 @@ async def _obtener_codigo_valido(
     )
 
 
-async def verificar_cliente(db: AsyncSession, persona_id: int) -> dict:
-    """Verificación aleatoria. Retorna dict con aprobado y codigo si aprobado."""
+async def verificar_cliente(
+    db: AsyncSession, persona_id: int, aprobado: bool, categoria: str | None = None
+) -> dict | None:
     cliente = await db.get(Cliente, persona_id)
     persona = await db.get(Persona, persona_id)
-    if cliente is None:
-        raise ValueError("Cliente no encontrado.")
-
-    if persona.email == "fedeabeledo01@gmail.com":
-        aprobado = True
-    elif persona.email == "fedeabeledo02@gmail.com":
-        aprobado = False
-    else:
-        aprobado = random.random() < 0.70
-
+    if cliente is None or cliente.admitido is not None:
+        return None
     if aprobado:
-        categorias = ["comun", "especial", "plata", "oro", "platino"]
-        pesos = [0.35, 0.30, 0.20, 0.10, 0.05]
-        categoria = random.choices(categorias, weights=pesos, k=1)[0]
         cliente.admitido = "si"
         cliente.categoria = categoria
-
+        persona.estado = "activo"
         codigo = await _crear_codigo(db, persona_id, "registro")
         await db.commit()
         return {"aprobado": True, "codigo": codigo, "categoria": categoria}
     else:
         cliente.admitido = "no"
         cliente.categoria = "comun"
-
-        persona = await db.get(Persona, persona_id)
-        if persona:
-            persona.estado = "inactivo"
-
+        persona.estado = "inactivo"
         await db.commit()
         return {"aprobado": False, "codigo": None, "categoria": "comun"}
+
+
+async def validar_codigo(db: AsyncSession, email: str, codigo: str, tipo: str) -> dict:
+    persona = await db.scalar(select(Persona).where(Persona.email == email))
+    if persona is None:
+        return {"error": "CODIGO_INVALIDO"}
+    row = await _obtener_codigo_valido(db, persona.identificador, codigo, tipo)
+    if row is not None:
+        cliente = await db.get(Cliente, persona.identificador) if tipo == "registro" else None
+        return {"valido": True, "categoria": cliente.categoria if cliente else None}
+    any_row = await db.scalar(
+        select(CodigoVerificacion).where(
+            CodigoVerificacion.persona == persona.identificador,
+            CodigoVerificacion.codigo == codigo,
+            CodigoVerificacion.tipo == tipo,
+        )
+    )
+    if any_row is None:
+        return {"error": "CODIGO_INVALIDO"}
+    if any_row.usado == "si":
+        return {"error": "CODIGO_USADO"}
+    return {"error": "CODIGO_EXPIRADO"}
 
 
 async def confirmar_cuenta(
@@ -338,7 +356,8 @@ async def _build_login_response(
     db: AsyncSession, persona_id: int, email: str, nombre: str
 ) -> dict:
     roles = []
-    if await db.scalar(select(Cliente).where(Cliente.identificador == persona_id)):
+    cliente = await db.scalar(select(Cliente).where(Cliente.identificador == persona_id))
+    if cliente:
         roles.append("comprador")
     if await db.scalar(select(Duenio).where(Duenio.identificador == persona_id)):
         roles.append("duenio")
@@ -374,4 +393,5 @@ async def _build_login_response(
         "token_renovacion": refresh_token,
         "roles": roles,
         "multa_impaga": tiene_multa,
+        "categoria": cliente.categoria if cliente else None,
     }

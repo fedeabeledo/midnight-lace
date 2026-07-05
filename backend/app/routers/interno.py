@@ -1,24 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.ws_manager import ws_manager
-from app.services import auth as auth_service
-from app.services import email as email_service
 from app.services import mi_actividad as mi_actividad_service
-from app.services import productos as productos_service
 from app.services import ws as ws_service
 
 router = APIRouter(prefix="/v1/interno", tags=["Interno"])
-
-
-class SolicitudVerificacion(BaseModel):
-    email: EmailStr
-
-
-class SolicitudVerificacionProducto(BaseModel):
-    id_producto: int
 
 
 class SolicitudCierreItem(BaseModel):
@@ -31,56 +20,6 @@ class SolicitudCierreSubasta(BaseModel):
 
 class SolicitudVerificacionCondiciones(BaseModel):
     id_subasta: int
-
-
-@router.post("/verificacion-cliente")
-async def verificacion_cliente(
-    body: SolicitudVerificacion,
-    db: AsyncSession = Depends(get_db),
-):
-    persona_id = await auth_service.get_persona_id_por_email(db, body.email)
-    if persona_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"codigo": "NO_ENCONTRADO", "mensaje": "No hay registro pendiente para ese email."},
-        )
-
-    ya_verificado = await auth_service.cliente_ya_verificado(db, persona_id)
-    if ya_verificado:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"codigo": "YA_VERIFICADO", "mensaje": "Este cliente ya fue verificado anteriormente."},
-        )
-
-    resultado = await auth_service.verificar_cliente(db, persona_id)
-    if resultado["aprobado"]:
-        codigo = resultado["codigo"]
-        await email_service.send_email(body.email, "registro", codigo=codigo)
-        return {
-            "aprobado": True,
-            "codigo_confirmacion": codigo,
-            "mensaje": "Cliente aprobado. Se envió email con código para setear clave.",
-        }
-    else:
-        await email_service.send_email(body.email, "rechazo", motivo="Tu solicitud no cumple con los requisitos de verificación.")
-        return {
-            "aprobado": False,
-            "mensaje": "Cliente rechazado. Se envió email de notificación.",
-        }
-
-
-@router.post("/verificacion-producto")
-async def verificacion_producto(
-    body: SolicitudVerificacionProducto,
-    db: AsyncSession = Depends(get_db),
-):
-    resultado = await productos_service.verificar_producto(db, body.id_producto)
-    if resultado is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"codigo": "ERROR_VALIDACION", "mensaje": "Producto no encontrado o ya verificado."},
-        )
-    return {"estado": resultado}
 
 
 @router.post("/cierre-item")
