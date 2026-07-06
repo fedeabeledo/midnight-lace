@@ -26,13 +26,17 @@ logger = logging.getLogger(__name__)
 MIDNIGHT_LACE_ID = 1
 
 
-def _schedule_timer(subasta_id: int, duracion_minutos: int):
+def _schedule_timer(subasta_id: int, seconds: float):
     async def _delayed():
-        await asyncio.sleep(duracion_minutos * 60)
+        await asyncio.sleep(seconds)
         await _auto_cerrar_item(subasta_id)
 
     task = asyncio.create_task(_delayed())
     ws_manager.start_item_timer(subasta_id, task)
+
+
+def extender_timer_item(subasta_id: int, seconds: float):
+    _schedule_timer(subasta_id, seconds)
 
 
 async def _auto_cerrar_item(subasta_id: int):
@@ -81,7 +85,7 @@ async def iniciar_primer_item(db: AsyncSession, subasta_id: int) -> dict | None:
     subasta = await db.get(Subasta, subasta_id)
     finaliza_en = now + timedelta(minutes=subasta.duracion_item_minutos)
 
-    _schedule_timer(subasta_id, subasta.duracion_item_minutos)
+    _schedule_timer(subasta_id, float(subasta.duracion_item_minutos * 60))
 
     return {
         "idItem": item.identificador,
@@ -259,7 +263,7 @@ async def cerrar_item(db: AsyncSession, subasta_id: int) -> list[dict]:
         await db.commit()
         if push_compra_ganada:
             await ws_manager.send_to_user(push_compra_ganada[0], {"evento": "compra_ganada", "datos": push_compra_ganada[1]})
-        _schedule_timer(subasta_id, subasta.duracion_item_minutos)
+        _schedule_timer(subasta_id, float(subasta.duracion_item_minutos * 60))
     else:
         subasta.estado = "cerrada"
         await db.commit()
