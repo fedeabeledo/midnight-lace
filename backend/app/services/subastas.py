@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ws_manager import ws_manager
 from app.models import (
     Catalogo,
-    Foto,
+    ComponenteProducto,
+    DetalleArtistico,
     Foto,
     ItemCatalogo,
     Notificacion,
@@ -395,33 +396,60 @@ async def get_catalogo(
     items = result.scalars().all()
 
     producto_ids = [item.producto for item in items]
-    fotos_por_producto: dict[int, dict] = {}
+    fotos_por_producto: dict[int, list[dict]] = {}
     if producto_ids:
         fotos_result = await db.execute(
             select(Foto)
             .where(Foto.producto.in_(producto_ids))
-            .distinct(Foto.producto)
             .order_by(Foto.producto, Foto.orden, Foto.identificador)
         )
         for foto in fotos_result.scalars().all():
-            fotos_por_producto[foto.producto] = {
+            fotos_por_producto.setdefault(foto.producto, []).append({
                 "identificador": foto.identificador,
                 "foto": foto.foto,
                 "orden": foto.orden,
+            })
+
+    detalles_por_producto: dict[int, dict] = {}
+    componentes_por_producto: dict[int, list[dict]] = {}
+    if producto_ids:
+        detalles_result = await db.execute(
+            select(DetalleArtistico).where(DetalleArtistico.producto.in_(producto_ids))
+        )
+        detalles_por_producto = {
+            detalle.producto: {
+                "artista": detalle.artista,
+                "fechaObra": detalle.fecha_obra,
+                "historia": detalle.historia,
             }
+            for detalle in detalles_result.scalars().all()
+        }
+
+        componentes_result = await db.execute(
+            select(ComponenteProducto).where(ComponenteProducto.producto.in_(producto_ids))
+        )
+        for componente in componentes_result.scalars().all():
+            componentes_por_producto.setdefault(componente.producto, []).append({
+                "identificador": componente.identificador,
+                "descripcion": componente.descripcion,
+                "cantidad": componente.cantidad,
+            })
 
     items_data = []
     for item in items:
         producto = await db.get(Producto, item.producto)
-        primera_foto = fotos_por_producto.get(item.producto)
         items_data.append({
             "identificador": item.identificador,
             "idProducto": item.producto,
             "nombre": producto.nombre if producto else None,
             "estado": producto.estado if producto else None,
-            "fotos": [primera_foto] if primera_foto else [],
+            "fotos": fotos_por_producto.get(item.producto, []),
             "descripcionCatalogo": producto.descripcion_catalogo if producto else None,
+            "descripcionCompleta": producto.descripcion_completa if producto else None,
             "precioBase": str(item.precio_base),
+            "moneda": producto.moneda if producto else None,
+            "detalleArtistico": detalles_por_producto.get(item.producto),
+            "componentes": componentes_por_producto.get(item.producto, []),
             "orden": item.orden,
             "comision": str(item.comision),
             "subastado": item.subastado,
