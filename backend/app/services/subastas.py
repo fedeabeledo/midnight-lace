@@ -170,9 +170,68 @@ async def cambiar_estado(
             f"Transición inválida: '{subasta.estado}' → '{nuevo_estado}'."
         )
 
+    if nuevo_estado == "cerrada":
+        await _devolver_productos_no_vendidos(db, subasta_id)
+
     subasta.estado = nuevo_estado
     await db.commit()
     return _serialize_subasta(subasta)
+
+
+async def _devolver_productos_no_vendidos(db: AsyncSession, subasta_id: int) -> int:
+    catalogo = await db.scalar(
+        select(Catalogo).where(Catalogo.subasta == subasta_id)
+    )
+    if catalogo is None:
+        return 0
+
+    result = await db.execute(
+        select(ItemCatalogo).where(ItemCatalogo.catalogo == catalogo.identificador)
+    )
+    now = datetime.now(timezone.utc)
+    actualizados = 0
+
+    for item in result.scalars().all():
+        registro_vendido = await db.scalar(
+            select(RegistroDeSubasta).where(
+                RegistroDeSubasta.subasta == subasta_id,
+                RegistroDeSubasta.producto == item.producto,
+                RegistroDeSubasta.importe > Decimal("0"),
+            )
+        )
+        if registro_vendido:
+            continue
+
+        item.subastado = "si"
+        if item.finalizado_en is None:
+            item.finalizado_en = now
+
+        producto = await db.get(Producto, item.producto)
+        if producto and producto.estado_producto != "vendido":
+            if producto.estado_producto != "asignado":
+                actualizados += 1
+            producto.estado_producto = "asignado"
+
+    return actualizados
+
+
+async def reparar_productos_no_vendidos_en_subastas_cerradas(
+    db: AsyncSession,
+    subastador_id: int | None = None,
+) -> int:
+    query = select(Subasta.identificador).where(Subasta.estado == "cerrada")
+    if subastador_id is not None:
+        query = query.where(Subasta.subastador == subastador_id)
+
+    result = await db.execute(query)
+    actualizados = 0
+    for subasta_id in result.scalars().all():
+        actualizados += await _devolver_productos_no_vendidos(db, subasta_id)
+
+    if actualizados:
+        await db.commit()
+
+    return actualizados
 
 
 async def get_subasta_destacada(db: AsyncSession) -> dict | None:
@@ -512,6 +571,8 @@ async def get_catalogo(
 async def get_pool_productos(
     db: AsyncSession, subastador_id: int, pagina: int, cantidad: int, estado: str | None = None
 ) -> dict:
+    await reparar_productos_no_vendidos_en_subastas_cerradas(db, subastador_id)
+
     query = select(Producto).where(Producto.subastador_asignado == subastador_id)
     count_q = select(func.count()).select_from(Producto).where(Producto.subastador_asignado == subastador_id)
 

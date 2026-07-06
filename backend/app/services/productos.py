@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ws_manager import ws_manager
 from app.services.notificaciones import crear_y_push
 from app.services.notificaciones import push_to_empleados
+from app.services.subastas import reparar_productos_no_vendidos_en_subastas_cerradas
 from app.models import (
     Catalogo,
     ItemCatalogo,
@@ -168,6 +169,8 @@ async def verificar_producto(
 async def listar_productos_duenio(
     db: AsyncSession, duenio_id: int, pagina: int, cantidad: int, estado: str | None = None
 ) -> dict:
+    await reparar_productos_no_vendidos_en_subastas_cerradas(db)
+
     query = select(Producto).where(Producto.duenio == duenio_id)
     count_query = select(func.count()).select_from(Producto).where(Producto.duenio == duenio_id)
 

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
 from app.core.ws_manager import ws_manager
+from app.services.subastas import _devolver_productos_no_vendidos
 from app.models import (
     Asistente,
     Catalogo,
@@ -296,18 +297,7 @@ async def cerrar_subasta(db: AsyncSession, subasta_id: int) -> list[dict]:
     )
 
     if catalogo:
-        result = await db.execute(
-            select(ItemCatalogo).where(
-                ItemCatalogo.catalogo == catalogo.identificador,
-                ItemCatalogo.subastado != "si",
-            )
-        )
-        for it in result.scalars().all():
-            it.subastado = "si"
-            it.finalizado_en = datetime.now(timezone.utc)
-            producto = await db.get(Producto, it.producto)
-            if producto and producto.estado_producto != "vendido":
-                producto.estado_producto = "asignado"
+        await _devolver_productos_no_vendidos(db, subasta_id)
 
     subasta.estado = "cerrada"
     await db.commit()
