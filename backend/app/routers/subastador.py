@@ -106,6 +106,7 @@ async def crear_subasta(
     moneda: str = Form(...),
     duracionItemMinutos: int = Form(...),
     ubicacion: str = Form(...),
+    destacada: bool = Form(False),
     capacidadAsistentes: int | None = Form(None),
     tieneDeposito: str | None = Form(None),
     seguridadPropia: str | None = Form(None),
@@ -121,6 +122,7 @@ async def crear_subasta(
         moneda=moneda,
         duracionItemMinutos=duracionItemMinutos,
         ubicacion=ubicacion,
+        destacada=destacada,
         capacidadAsistentes=capacidadAsistentes,
         tieneDeposito=tieneDeposito,
         seguridadPropia=seguridadPropia,
@@ -152,6 +154,7 @@ async def crear_subasta(
         tiene_deposito=body.tiene_deposito,
         seguridad_propia=body.seguridad_propia,
         foto_principal=foto_principal,
+        destacada=body.destacada,
     )
 
 

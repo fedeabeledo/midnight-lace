@@ -22,6 +22,7 @@ class SubastaResponse(BaseModel):
     moneda: str | None = None
     duracion_item_minutos: int | None = Field(None, alias="duracionItemMinutos")
     foto_principal: str | None = Field(None, alias="fotoPrincipal")
+    destacada: bool = False
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 
@@ -37,6 +38,7 @@ class SolicitudCrearSubasta(BaseModel):
     categoria: Literal["comun", "especial", "plata", "oro", "platino"]
     moneda: Literal["ARS", "USD"]
     duracion_item_minutos: int = Field(alias="duracionItemMinutos", ge=1)
+    destacada: bool = False
 
     model_config = {"populate_by_name": True}
 

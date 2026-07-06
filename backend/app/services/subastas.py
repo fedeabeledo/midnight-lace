@@ -1,5 +1,6 @@
 import json
 import math
+import random
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
@@ -30,6 +31,10 @@ def _auction_local_now() -> datetime:
     return datetime.now(timezone(timedelta(hours=-3))).replace(tzinfo=None)
 
 
+def _is_finalizada(estado: str | None) -> bool:
+    return estado in {"cerrada", "finalizada"}
+
+
 async def crear_subasta(
     db: AsyncSession,
     subastador_id: int,
@@ -44,7 +49,13 @@ async def crear_subasta(
     tiene_deposito: str | None = None,
     seguridad_propia: str | None = None,
     foto_principal: str | None = None,
+    destacada: bool = False,
 ) -> dict:
+    if destacada:
+        result = await db.execute(select(Subasta).where(Subasta.destacada.is_(True)))
+        for actual in result.scalars().all():
+            actual.destacada = False
+
     subasta = Subasta(
         nombre=nombre,
         fecha=fecha,
@@ -59,6 +70,7 @@ async def crear_subasta(
         moneda=moneda,
         duracion_item_minutos=duracion_item_minutos,
         foto_principal=foto_principal,
+        destacada=destacada,
     )
     db.add(subasta)
     await db.commit()
@@ -161,6 +173,30 @@ async def cambiar_estado(
     subasta.estado = nuevo_estado
     await db.commit()
     return _serialize_subasta(subasta)
+
+
+async def get_subasta_destacada(db: AsyncSession) -> dict | None:
+    destacada = await db.scalar(
+        select(Subasta)
+        .where(Subasta.destacada.is_(True))
+        .order_by(Subasta.identificador.desc())
+    )
+    if destacada is not None:
+        if not _is_finalizada(destacada.estado):
+            return _serialize_subasta(destacada)
+
+        result = await db.execute(select(Subasta).where(Subasta.estado.not_in(["cerrada", "finalizada"])))
+        disponibles = result.scalars().all()
+        if disponibles:
+            return _serialize_subasta(random.choice(disponibles))
+        return None
+
+    result = await db.execute(select(Subasta).where(Subasta.estado.not_in(["cerrada", "finalizada"])))
+    disponibles = result.scalars().all()
+    if disponibles:
+        return _serialize_subasta(random.choice(disponibles))
+
+    return None
 
 
 async def cerrar_subastas_no_iniciadas(db: AsyncSession, margen_minutos: int = 15) -> dict:
@@ -555,4 +591,5 @@ def _serialize_subasta(s: Subasta) -> dict:
         "moneda": s.moneda,
         "duracionItemMinutos": s.duracion_item_minutos,
         "fotoPrincipal": s.foto_principal,
+        "destacada": s.destacada,
     }

@@ -1,6 +1,6 @@
 from datetime import date, datetime, time
 
-from sqlalchemy import Date, ForeignKey, Integer, String, Time
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -23,3 +23,4 @@ class Subasta(Base):
     moneda: Mapped[str] = mapped_column(String(3), nullable=False)
     duracion_item_minutos: Mapped[int] = mapped_column("duracionItemMinutos", Integer, nullable=False)
     foto_principal: Mapped[str | None] = mapped_column("fotoPrincipal", String(500), nullable=True)
+    destacada: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
