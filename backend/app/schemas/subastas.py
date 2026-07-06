@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.productos import FotoResponse
+from app.schemas.productos import ComponenteResponse, DetalleArtisticoResponse, FotoResponse
 
 
 class SubastaResponse(BaseModel):
@@ -91,9 +91,13 @@ class ItemCatalogoResponse(BaseModel):
     id_producto: int = Field(alias="idProducto")
     nombre: str | None = None
     estado: Literal["nuevo", "usado"] | None = None
-    fotos: list[FotoResponse] = Field(default_factory=list, max_length=1)
+    fotos: list[FotoResponse] = Field(default_factory=list)
     descripcion_catalogo: str | None = Field(None, alias="descripcionCatalogo")
+    descripcion_completa: str | None = Field(None, alias="descripcionCompleta")
     precio_base: str | None = Field(None, alias="precioBase")
+    moneda: str | None = None
+    detalle_artistico: DetalleArtisticoResponse | None = Field(None, alias="detalleArtistico")
+    componentes: list[ComponenteResponse] = []
     orden: int
     comision: str
     subastado: str | None = None
