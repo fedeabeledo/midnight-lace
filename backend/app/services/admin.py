@@ -1,6 +1,6 @@
 import math
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
@@ -11,10 +11,14 @@ from app.models.medios_pago import (
     MedioDePago,
     TarjetaCredito,
 )
+from app.models.asistentes_pujos import Asistente, Pujo
+from app.models.catalogos import Catalogo, ItemCatalogo
 from app.models.productos import Foto, Producto
 from app.models.multas import Multa
 from app.models.personas import Persona, Empleado
+from app.models.registro_subasta import RegistroDeSubasta
 from app.models.subastadores import Subastador
+from app.models.subastas import Subasta
 from app.services.notificaciones import crear_y_push
 
 
@@ -383,3 +387,29 @@ async def crear_subastador(db: AsyncSession, datos: dict) -> dict:
         "email": persona.email,
         "estado": persona.estado,
     }
+
+
+async def eliminar_subasta(db: AsyncSession, subasta_id: int) -> bool:
+    subasta = await db.get(Subasta, subasta_id)
+    if subasta is None:
+        return False
+
+    registros_subq = select(RegistroDeSubasta.identificador).where(
+        RegistroDeSubasta.subasta == subasta_id
+    )
+    await db.execute(delete(Multa).where(Multa.registro_subasta.in_(registros_subq)))
+    await db.execute(delete(RegistroDeSubasta).where(RegistroDeSubasta.subasta == subasta_id))
+
+    asistentes_subq = select(Asistente.identificador).where(Asistente.subasta == subasta_id)
+    catalogos_subq = select(Catalogo.identificador).where(Catalogo.subasta == subasta_id)
+    items_subq = select(ItemCatalogo.identificador).where(ItemCatalogo.catalogo.in_(catalogos_subq))
+
+    await db.execute(delete(Pujo).where(
+        (Pujo.asistente.in_(asistentes_subq)) | (Pujo.item.in_(items_subq))
+    ))
+    await db.execute(delete(Asistente).where(Asistente.subasta == subasta_id))
+    await db.execute(delete(ItemCatalogo).where(ItemCatalogo.catalogo.in_(catalogos_subq)))
+    await db.execute(delete(Catalogo).where(Catalogo.subasta == subasta_id))
+    await db.delete(subasta)
+    await db.commit()
+    return True

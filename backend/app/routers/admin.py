@@ -139,3 +139,18 @@ async def crear_subastador(
     db: AsyncSession = Depends(get_db),
 ):
     return await service.crear_subastador(db, body.model_dump(by_alias=False))
+
+
+@router.delete("/subastas/{id}")
+async def eliminar_subasta(
+    id: int,
+    user: dict = Depends(require_role("empleado")),
+    db: AsyncSession = Depends(get_db),
+):
+    eliminada = await service.eliminar_subasta(db, id)
+    if not eliminada:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"codigo": "NO_ENCONTRADO", "mensaje": "Subasta no encontrada."},
+        )
+    return {"mensaje": "Subasta eliminada"}
