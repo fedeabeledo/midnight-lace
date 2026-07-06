@@ -305,6 +305,9 @@ async def cerrar_subasta(db: AsyncSession, subasta_id: int) -> list[dict]:
         for it in result.scalars().all():
             it.subastado = "si"
             it.finalizado_en = datetime.now(timezone.utc)
+            producto = await db.get(Producto, it.producto)
+            if producto and producto.estado_producto != "vendido":
+                producto.estado_producto = "asignado"
 
     subasta.estado = "cerrada"
     await db.commit()
