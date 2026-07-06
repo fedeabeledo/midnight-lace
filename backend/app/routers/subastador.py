@@ -15,6 +15,8 @@ from app.schemas.subastas import (
     SolicitudActualizarSubasta,
     SubastaResponse,
 )
+from app.schemas.pujas import EstadoPujaActualResponse
+from app.services import pujas as pujas_service
 from app.services import subastas as subastas_service
 from app.services.auth import save_upload
 from app.services import ws as ws_service
@@ -33,6 +35,66 @@ async def listar_subastas(
     return await subastas_service.listar_subastas(
         db, pagina, cantidad, estado=estado, subastador_id=user["identificador"]
     )
+
+
+@router.get("/subastas/{id}", response_model=SubastaResponse)
+async def ver_subasta(
+    id: int,
+    user: dict = Depends(require_role("subastador")),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await subastas_service.get_subasta(db, id)
+    if result is None or result.get("idSubastador") != user["identificador"]:
+        raise HTTPException(status_code=404, detail={"codigo": "NO_ENCONTRADO", "mensaje": "Subasta no encontrada."})
+    return result
+
+
+@router.get("/subastas/{id}/catalogo", response_model=CatalogoResponse)
+async def ver_catalogo(
+    id: int,
+    pagina: int = Query(1, ge=1),
+    cantidad: int = Query(20, ge=1, le=100),
+    user: dict = Depends(require_role("subastador")),
+    db: AsyncSession = Depends(get_db),
+):
+    subasta = await subastas_service.get_subasta(db, id)
+    if subasta is None or subasta.get("idSubastador") != user["identificador"]:
+        raise HTTPException(status_code=404, detail={"codigo": "NO_ENCONTRADO", "mensaje": "Subasta no encontrada."})
+
+    result = await subastas_service.get_catalogo(db, id, pagina, cantidad)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"codigo": "NO_ENCONTRADO", "mensaje": "Subasta o catÃ¡logo no encontrado."},
+        )
+    return result
+
+
+@router.get("/subastas/{id}/item-actual", response_model=EstadoPujaActualResponse)
+async def item_actual(
+    id: int,
+    user: dict = Depends(require_role("subastador")),
+    db: AsyncSession = Depends(get_db),
+):
+    subasta = await subastas_service.get_subasta(db, id)
+    if subasta is None or subasta.get("idSubastador") != user["identificador"]:
+        raise HTTPException(status_code=404, detail={"codigo": "NO_ENCONTRADO", "mensaje": "Subasta no encontrada."})
+    return await pujas_service.item_actual(db, id)
+
+
+@router.get("/subastas/{idSubasta}/items/{idItem}/pujas")
+async def historial_pujas(
+    idSubasta: int,
+    idItem: int,
+    pagina: int = Query(1, ge=1),
+    cantidad: int = Query(20, ge=1, le=100),
+    user: dict = Depends(require_role("subastador")),
+    db: AsyncSession = Depends(get_db),
+):
+    subasta = await subastas_service.get_subasta(db, idSubasta)
+    if subasta is None or subasta.get("idSubastador") != user["identificador"]:
+        raise HTTPException(status_code=404, detail={"codigo": "NO_ENCONTRADO", "mensaje": "Subasta no encontrada."})
+    return await pujas_service.historial_pujas(db, idSubasta, idItem, pagina, cantidad)
 
 
 @router.post("/subastas", response_model=SubastaResponse, status_code=status.HTTP_201_CREATED)
