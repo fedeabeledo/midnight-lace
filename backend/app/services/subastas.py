@@ -207,7 +207,7 @@ async def _devolver_productos_no_vendidos(db: AsyncSession, subasta_id: int) -> 
             item.finalizado_en = now
 
         producto = await db.get(Producto, item.producto)
-        if producto and producto.estado_producto != "vendido":
+        if producto and producto.estado_producto not in {"vendido", "pendiente_confirmacion", "en_subasta"}:
             if producto.estado_producto != "asignado":
                 actualizados += 1
             producto.estado_producto = "asignado"
@@ -232,6 +232,35 @@ async def reparar_productos_no_vendidos_en_subastas_cerradas(
         await db.commit()
 
     return actualizados
+
+
+async def reparar_productos_pendientes_confirmacion_en_subastas_programadas(
+    db: AsyncSession,
+    subastador_id: int | None = None,
+) -> int:
+    query = (
+        select(Producto)
+        .join(ItemCatalogo, ItemCatalogo.producto == Producto.identificador)
+        .join(Catalogo, Catalogo.identificador == ItemCatalogo.catalogo)
+        .join(Subasta, Subasta.identificador == Catalogo.subasta)
+        .where(
+            Subasta.estado == "programada",
+            ItemCatalogo.subastado != "si",
+            Producto.estado_producto == "asignado",
+        )
+    )
+    if subastador_id is not None:
+        query = query.where(Subasta.subastador == subastador_id)
+
+    result = await db.execute(query)
+    productos = result.scalars().unique().all()
+    for producto in productos:
+        producto.estado_producto = "pendiente_confirmacion"
+
+    if productos:
+        await db.commit()
+
+    return len(productos)
 
 
 async def get_subasta_destacada(db: AsyncSession) -> dict | None:
@@ -572,6 +601,7 @@ async def get_pool_productos(
     db: AsyncSession, subastador_id: int, pagina: int, cantidad: int, estado: str | None = None
 ) -> dict:
     await reparar_productos_no_vendidos_en_subastas_cerradas(db, subastador_id)
+    await reparar_productos_pendientes_confirmacion_en_subastas_programadas(db, subastador_id)
 
     query = select(Producto).where(Producto.subastador_asignado == subastador_id)
     count_q = select(func.count()).select_from(Producto).where(Producto.subastador_asignado == subastador_id)
