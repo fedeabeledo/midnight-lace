@@ -31,8 +31,8 @@ def _auction_local_now() -> datetime:
     return datetime.now(timezone(timedelta(hours=-3))).replace(tzinfo=None)
 
 
-def _is_finalizada(estado: str | None) -> bool:
-    return estado in {"cerrada", "finalizada"}
+def _is_disponible_home(estado: str | None) -> bool:
+    return estado in {"programada", "abierta"}
 
 
 async def crear_subasta(
@@ -182,16 +182,16 @@ async def get_subasta_destacada(db: AsyncSession) -> dict | None:
         .order_by(Subasta.identificador.desc())
     )
     if destacada is not None:
-        if not _is_finalizada(destacada.estado):
+        if _is_disponible_home(destacada.estado):
             return _serialize_subasta(destacada)
 
-        result = await db.execute(select(Subasta).where(Subasta.estado.not_in(["cerrada", "finalizada"])))
+        result = await db.execute(select(Subasta).where(Subasta.estado.in_(["programada", "abierta"])))
         disponibles = result.scalars().all()
         if disponibles:
             return _serialize_subasta(random.choice(disponibles))
         return None
 
-    result = await db.execute(select(Subasta).where(Subasta.estado.not_in(["cerrada", "finalizada"])))
+    result = await db.execute(select(Subasta).where(Subasta.estado.in_(["programada", "abierta"])))
     disponibles = result.scalars().all()
     if disponibles:
         return _serialize_subasta(random.choice(disponibles))
