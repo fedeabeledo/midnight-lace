@@ -50,8 +50,8 @@ class SolicitudCrearSubasta(BaseModel):
     @field_validator("fecha")
     @classmethod
     def fecha_futura(cls, v: date) -> date:
-        if v <= date.today() + timedelta(days=10):
-            raise ValueError("La fecha debe ser al menos 10 días posterior a hoy.")
+        # if v <= date.today() + timedelta(days=10):
+        #     raise ValueError("La fecha debe ser al menos 10 días posterior a hoy.")
         return v
 
 

@@ -1,6 +1,6 @@
 import json
 import math
-from datetime import date, time
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -23,6 +23,10 @@ from app.models import (
 def _parse_hora(hora: str) -> time:
     parts = hora.split(":")
     return time(int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0)
+
+
+def _auction_local_now() -> datetime:
+    return datetime.now(timezone(timedelta(hours=-3))).replace(tzinfo=None)
 
 
 async def crear_subasta(
@@ -156,6 +160,34 @@ async def cambiar_estado(
     subasta.estado = nuevo_estado
     await db.commit()
     return _serialize_subasta(subasta)
+
+
+async def cerrar_subastas_no_iniciadas(db: AsyncSession, margen_minutos: int = 15) -> dict:
+    ahora = _auction_local_now()
+    result = await db.execute(
+        select(Subasta).where(
+            Subasta.estado == "programada",
+            Subasta.fecha.is_not(None),
+            Subasta.hora.is_not(None),
+        )
+    )
+    subastas = result.scalars().all()
+    cerradas = []
+
+    for subasta in subastas:
+        inicio_programado = datetime.combine(subasta.fecha, subasta.hora)
+        vence_inicio = inicio_programado + timedelta(minutes=margen_minutos)
+        if vence_inicio <= ahora:
+            subasta.estado = "cerrada"
+            cerradas.append(subasta.identificador)
+
+    if cerradas:
+        await db.commit()
+
+    return {
+        "cerradas": len(cerradas),
+        "ids": cerradas,
+    }
 
 
 async def get_registros(
