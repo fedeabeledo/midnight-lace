@@ -495,6 +495,7 @@ async def get_pool_productos(
             "identificador": p.identificador,
             "nombre": p.nombre,
             "estado": p.estado,
+            "descripcionCatalogo": p.descripcion_catalogo,
             "descripcionCompleta": p.descripcion_completa,
             "precioBase": str(p.precio_base),
             "moneda": p.moneda,
