@@ -103,7 +103,7 @@ async def crear_subasta(
     fecha: str = Form(...),
     hora: str = Form(...),
     categoria: str = Form(...),
-    moneda: str = Form(...),
+    moneda: str | None = Form(None),
     duracionItemMinutos: int = Form(...),
     ubicacion: str = Form(...),
     destacada: bool = Form(False),

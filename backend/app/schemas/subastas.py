@@ -36,7 +36,7 @@ class SolicitudCrearSubasta(BaseModel):
     tiene_deposito: Literal["si", "no"] | None = Field(None, alias="tieneDeposito")
     seguridad_propia: Literal["si", "no"] | None = Field(None, alias="seguridadPropia")
     categoria: Literal["comun", "especial", "plata", "oro", "platino"]
-    moneda: Literal["ARS", "USD"]
+    moneda: Literal["ARS", "USD"] | None = None
     duracion_item_minutos: int = Field(alias="duracionItemMinutos", ge=1)
     destacada: bool = False
 
