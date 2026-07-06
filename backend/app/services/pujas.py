@@ -1,5 +1,5 @@
 import math
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -20,6 +20,53 @@ from app.models import (
 )
 
 
+def _to_aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _item_finaliza_en(item: ItemCatalogo, subasta: Subasta) -> datetime | None:
+    if not item.iniciado_en or not subasta.duracion_item_minutos:
+        return None
+    return _to_aware_utc(item.iniciado_en) + timedelta(minutes=subasta.duracion_item_minutos)
+
+
+async def _advance_expired_items(db: AsyncSession, subasta_id: int) -> None:
+    from app.core.ws_manager import ws_manager
+    from app.services import ws as ws_service
+
+    while True:
+        subasta = await db.get(Subasta, subasta_id)
+        if subasta is None or subasta.estado != "abierta":
+            return
+
+        catalogo = await db.scalar(
+            select(Catalogo).where(Catalogo.subasta == subasta_id)
+        )
+        if catalogo is None:
+            return
+
+        item = await db.scalar(
+            select(ItemCatalogo)
+            .where(
+                ItemCatalogo.catalogo == catalogo.identificador,
+                ItemCatalogo.subastado != "si",
+            )
+            .order_by(ItemCatalogo.orden.asc())
+        )
+        if item is None:
+            return
+
+        finaliza_en = _item_finaliza_en(item, subasta)
+        if finaliza_en is None or finaliza_en > datetime.now(timezone.utc):
+            return
+
+        events = await ws_service.cerrar_item(db, subasta_id)
+        for event in events:
+            await ws_manager.broadcast(subasta_id, event)
+
+
 async def crear_puja(
     db: AsyncSession,
     subasta_id: int,
@@ -29,6 +76,8 @@ async def crear_puja(
     medio_pago_id: int,
 ) -> dict:
     # 1. Verificar subasta existe y está abierta
+    await _advance_expired_items(db, subasta_id)
+
     subasta = await db.get(Subasta, subasta_id)
     if subasta is None:
         raise HTTPException(
@@ -348,6 +397,8 @@ async def historial_pujas(
 
 
 async def item_actual(db: AsyncSession, subasta_id: int) -> dict:
+    await _advance_expired_items(db, subasta_id)
+
     # Verificar subasta
     subasta = await db.get(Subasta, subasta_id)
     if subasta is None:

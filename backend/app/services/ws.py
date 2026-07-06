@@ -145,7 +145,7 @@ async def cerrar_item(db: AsyncSession, subasta_id: int) -> list[dict]:
             cliente=cliente_id,
             importe=ganadora.importe,
             comision=item.comision,
-            moneda=subasta.moneda,
+            moneda=producto.moneda if producto else None,
             fecha_vencimiento=fecha_vencimiento,
         )
         db.add(registro)
@@ -173,7 +173,7 @@ async def cerrar_item(db: AsyncSession, subasta_id: int) -> list[dict]:
                 "importe": str(ganadora.importe),
                 "comision": str(item.comision),
                 "costoEnvio": "0",
-                "moneda": subasta.moneda,
+                "moneda": producto.moneda if producto else None,
                 "fechaVencimiento": fecha_vencimiento.isoformat(),
             }),
         ))
@@ -182,7 +182,7 @@ async def cerrar_item(db: AsyncSession, subasta_id: int) -> list[dict]:
             "importe": str(ganadora.importe),
             "comision": str(item.comision),
             "costoEnvio": "0",
-            "moneda": subasta.moneda,
+            "moneda": producto.moneda if producto else None,
             "fechaVencimiento": fecha_vencimiento.isoformat(),
         })
 
@@ -205,7 +205,7 @@ async def cerrar_item(db: AsyncSession, subasta_id: int) -> list[dict]:
             cliente=MIDNIGHT_LACE_ID,
             importe=Decimal("0"),
             comision=item.comision,
-            moneda=subasta.moneda,
+            moneda=producto.moneda if producto else None,
         ))
 
         db.add(Notificacion(
