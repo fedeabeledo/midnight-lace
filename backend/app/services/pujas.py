@@ -249,16 +249,18 @@ async def crear_puja(
             },
         )
 
-    # 11.5 Extender tiempo del item: sumar 5 segundos por cada puja
+    # 11.5 Extender tiempo del item si queda poco tiempo (menos de 10s -> resetear a 10s)
     finaliza_en = _item_finaliza_en(item, subasta)
     nueva_finaliza_en = finaliza_en
     if finaliza_en:
         now_utc = datetime.now(timezone.utc)
         restante = (finaliza_en - now_utc).total_seconds()
         if restante > 0:
-            item.iniciado_en = item.iniciado_en + timedelta(seconds=5)
-            nueva_finaliza_en = _item_finaliza_en(item, subasta)
-            restante = restante + 5.0
+            if restante < 10:
+                extension = 10.0 - restante
+                item.iniciado_en = item.iniciado_en + timedelta(seconds=extension)
+                nueva_finaliza_en = _item_finaliza_en(item, subasta)
+                restante = 10.0
             
             from app.services.ws import extender_timer_item
             extender_timer_item(subasta_id, restante)
