@@ -32,15 +32,35 @@ async def _cron_vencimientos() -> None:
             logger.error("[CRON] verificar_vencimientos error: %s", exc)
 
 
+async def _cron_subastas_no_iniciadas() -> None:
+    from app.core.database import async_session
+    from app.services import subastas as svc
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            async with async_session() as db:
+                result = await svc.cerrar_subastas_no_iniciadas(db)
+                if result["cerradas"]:
+                    logger.info("[CRON] cerrar_subastas_no_iniciadas: %s", result)
+        except Exception as exc:
+            logger.error("[CRON] cerrar_subastas_no_iniciadas error: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(_cron_vencimientos())
+    tasks = [
+        asyncio.create_task(_cron_vencimientos()),
+        asyncio.create_task(_cron_subastas_no_iniciadas()),
+    ]
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    for task in tasks:
+        task.cancel()
+    for task in tasks:
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 def create_app() -> FastAPI:

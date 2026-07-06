@@ -1,6 +1,7 @@
 import json
 import math
-from datetime import date, time
+import random
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -9,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ws_manager import ws_manager
 from app.models import (
     Catalogo,
-    Foto,
+    ComponenteProducto,
+    DetalleArtistico,
     Foto,
     ItemCatalogo,
     Notificacion,
@@ -25,6 +27,14 @@ def _parse_hora(hora: str) -> time:
     return time(int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0)
 
 
+def _auction_local_now() -> datetime:
+    return datetime.now(timezone(timedelta(hours=-3))).replace(tzinfo=None)
+
+
+def _is_disponible_home(estado: str | None) -> bool:
+    return estado in {"programada", "abierta"}
+
+
 async def crear_subasta(
     db: AsyncSession,
     subastador_id: int,
@@ -32,14 +42,20 @@ async def crear_subasta(
     fecha: date,
     hora: str,
     categoria: str,
-    moneda: str,
     duracion_item_minutos: int,
     ubicacion: str,
+    moneda: str | None = None,
     capacidad_asistentes: int | None = None,
     tiene_deposito: str | None = None,
     seguridad_propia: str | None = None,
     foto_principal: str | None = None,
+    destacada: bool = False,
 ) -> dict:
+    if destacada:
+        result = await db.execute(select(Subasta).where(Subasta.destacada.is_(True)))
+        for actual in result.scalars().all():
+            actual.destacada = False
+
     subasta = Subasta(
         nombre=nombre,
         fecha=fecha,
@@ -54,6 +70,7 @@ async def crear_subasta(
         moneda=moneda,
         duracion_item_minutos=duracion_item_minutos,
         foto_principal=foto_principal,
+        destacada=destacada,
     )
     db.add(subasta)
     await db.commit()
@@ -153,9 +170,149 @@ async def cambiar_estado(
             f"Transición inválida: '{subasta.estado}' → '{nuevo_estado}'."
         )
 
+    if nuevo_estado == "cerrada":
+        await _devolver_productos_no_vendidos(db, subasta_id)
+
     subasta.estado = nuevo_estado
     await db.commit()
     return _serialize_subasta(subasta)
+
+
+async def _devolver_productos_no_vendidos(db: AsyncSession, subasta_id: int) -> int:
+    catalogo = await db.scalar(
+        select(Catalogo).where(Catalogo.subasta == subasta_id)
+    )
+    if catalogo is None:
+        return 0
+
+    result = await db.execute(
+        select(ItemCatalogo).where(ItemCatalogo.catalogo == catalogo.identificador)
+    )
+    now = datetime.now(timezone.utc)
+    actualizados = 0
+
+    for item in result.scalars().all():
+        registro_vendido = await db.scalar(
+            select(RegistroDeSubasta).where(
+                RegistroDeSubasta.subasta == subasta_id,
+                RegistroDeSubasta.producto == item.producto,
+                RegistroDeSubasta.importe > Decimal("0"),
+            )
+        )
+        if registro_vendido:
+            continue
+
+        item.subastado = "si"
+        if item.finalizado_en is None:
+            item.finalizado_en = now
+
+        producto = await db.get(Producto, item.producto)
+        if producto and producto.estado_producto not in {"vendido", "pendiente_confirmacion", "en_subasta"}:
+            if producto.estado_producto != "asignado":
+                actualizados += 1
+            producto.estado_producto = "asignado"
+
+    return actualizados
+
+
+async def reparar_productos_no_vendidos_en_subastas_cerradas(
+    db: AsyncSession,
+    subastador_id: int | None = None,
+) -> int:
+    query = select(Subasta.identificador).where(Subasta.estado == "cerrada")
+    if subastador_id is not None:
+        query = query.where(Subasta.subastador == subastador_id)
+
+    result = await db.execute(query)
+    actualizados = 0
+    for subasta_id in result.scalars().all():
+        actualizados += await _devolver_productos_no_vendidos(db, subasta_id)
+
+    if actualizados:
+        await db.commit()
+
+    return actualizados
+
+
+async def reparar_productos_pendientes_confirmacion_en_subastas_programadas(
+    db: AsyncSession,
+    subastador_id: int | None = None,
+) -> int:
+    query = (
+        select(Producto)
+        .join(ItemCatalogo, ItemCatalogo.producto == Producto.identificador)
+        .join(Catalogo, Catalogo.identificador == ItemCatalogo.catalogo)
+        .join(Subasta, Subasta.identificador == Catalogo.subasta)
+        .where(
+            Subasta.estado == "programada",
+            ItemCatalogo.subastado != "si",
+            Producto.estado_producto == "asignado",
+        )
+    )
+    if subastador_id is not None:
+        query = query.where(Subasta.subastador == subastador_id)
+
+    result = await db.execute(query)
+    productos = result.scalars().unique().all()
+    for producto in productos:
+        producto.estado_producto = "pendiente_confirmacion"
+
+    if productos:
+        await db.commit()
+
+    return len(productos)
+
+
+async def get_subasta_destacada(db: AsyncSession) -> dict | None:
+    destacada = await db.scalar(
+        select(Subasta)
+        .where(Subasta.destacada.is_(True))
+        .order_by(Subasta.identificador.desc())
+    )
+    if destacada is not None:
+        if _is_disponible_home(destacada.estado):
+            return _serialize_subasta(destacada)
+
+        result = await db.execute(select(Subasta).where(Subasta.estado.in_(["programada", "abierta"])))
+        disponibles = result.scalars().all()
+        if disponibles:
+            return _serialize_subasta(random.choice(disponibles))
+        return None
+
+    result = await db.execute(select(Subasta).where(Subasta.estado.in_(["programada", "abierta"])))
+    disponibles = result.scalars().all()
+    if disponibles:
+        return _serialize_subasta(random.choice(disponibles))
+
+    return None
+
+
+async def cerrar_subastas_no_iniciadas(db: AsyncSession, margen_minutos: int = 15) -> dict:
+    ahora = _auction_local_now()
+    result = await db.execute(
+        select(Subasta).where(
+            Subasta.estado == "programada",
+            Subasta.fecha.is_not(None),
+            Subasta.hora.is_not(None),
+        )
+    )
+    subastas = result.scalars().all()
+    cerradas = []
+
+    for subasta in subastas:
+        inicio_programado = datetime.combine(subasta.fecha, subasta.hora)
+        vence_inicio = inicio_programado + timedelta(minutes=margen_minutos)
+        if vence_inicio <= ahora:
+            subasta.estado = "cerrada"
+            cerradas.append(subasta.identificador)
+
+    if cerradas:
+        await db.commit()
+
+    return {
+        "cerradas": len(cerradas),
+        "ids": cerradas,
+    }
 
 
 async def get_registros(
@@ -364,33 +521,60 @@ async def get_catalogo(
     items = result.scalars().all()
 
     producto_ids = [item.producto for item in items]
-    fotos_por_producto: dict[int, dict] = {}
+    fotos_por_producto: dict[int, list[dict]] = {}
     if producto_ids:
         fotos_result = await db.execute(
             select(Foto)
             .where(Foto.producto.in_(producto_ids))
-            .distinct(Foto.producto)
             .order_by(Foto.producto, Foto.orden, Foto.identificador)
         )
         for foto in fotos_result.scalars().all():
-            fotos_por_producto[foto.producto] = {
+            fotos_por_producto.setdefault(foto.producto, []).append({
                 "identificador": foto.identificador,
                 "foto": foto.foto,
                 "orden": foto.orden,
+            })
+
+    detalles_por_producto: dict[int, dict] = {}
+    componentes_por_producto: dict[int, list[dict]] = {}
+    if producto_ids:
+        detalles_result = await db.execute(
+            select(DetalleArtistico).where(DetalleArtistico.producto.in_(producto_ids))
+        )
+        detalles_por_producto = {
+            detalle.producto: {
+                "artista": detalle.artista,
+                "fechaObra": detalle.fecha_obra,
+                "historia": detalle.historia,
             }
+            for detalle in detalles_result.scalars().all()
+        }
+
+        componentes_result = await db.execute(
+            select(ComponenteProducto).where(ComponenteProducto.producto.in_(producto_ids))
+        )
+        for componente in componentes_result.scalars().all():
+            componentes_por_producto.setdefault(componente.producto, []).append({
+                "identificador": componente.identificador,
+                "descripcion": componente.descripcion,
+                "cantidad": componente.cantidad,
+            })
 
     items_data = []
     for item in items:
         producto = await db.get(Producto, item.producto)
-        primera_foto = fotos_por_producto.get(item.producto)
         items_data.append({
             "identificador": item.identificador,
             "idProducto": item.producto,
             "nombre": producto.nombre if producto else None,
             "estado": producto.estado if producto else None,
-            "fotos": [primera_foto] if primera_foto else [],
+            "fotos": fotos_por_producto.get(item.producto, []),
             "descripcionCatalogo": producto.descripcion_catalogo if producto else None,
+            "descripcionCompleta": producto.descripcion_completa if producto else None,
             "precioBase": str(item.precio_base),
+            "moneda": producto.moneda if producto else None,
+            "detalleArtistico": detalles_por_producto.get(item.producto),
+            "componentes": componentes_por_producto.get(item.producto, []),
             "orden": item.orden,
             "comision": str(item.comision),
             "subastado": item.subastado,
@@ -418,6 +602,9 @@ async def get_catalogo(
 async def get_pool_productos(
     db: AsyncSession, subastador_id: int, pagina: int, cantidad: int, estado: str | None = None
 ) -> dict:
+    await reparar_productos_no_vendidos_en_subastas_cerradas(db, subastador_id)
+    await reparar_productos_pendientes_confirmacion_en_subastas_programadas(db, subastador_id)
+
     query = select(Producto).where(Producto.subastador_asignado == subastador_id)
     count_q = select(func.count()).select_from(Producto).where(Producto.subastador_asignado == subastador_id)
 
@@ -465,6 +652,7 @@ async def get_pool_productos(
             "identificador": p.identificador,
             "nombre": p.nombre,
             "estado": p.estado,
+            "descripcionCatalogo": p.descripcion_catalogo,
             "descripcionCompleta": p.descripcion_completa,
             "precioBase": str(p.precio_base),
             "moneda": p.moneda,
@@ -496,4 +684,5 @@ def _serialize_subasta(s: Subasta) -> dict:
         "moneda": s.moneda,
         "duracionItemMinutos": s.duracion_item_minutos,
         "fotoPrincipal": s.foto_principal,
+        "destacada": s.destacada,
     }

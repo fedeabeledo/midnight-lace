@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.dependencies import require_role
+from app.dependencies import get_current_user, require_role
 from app.schemas.subastas import CatalogoResponse
 from app.services import subastas as subastas_service
 
@@ -22,6 +22,20 @@ async def listar_subastas(
     return await subastas_service.listar_subastas(
         db, pagina, cantidad, estado=estado, categoria=categoria, moneda=moneda
     )
+
+
+@router.get("/destacada")
+async def subasta_destacada(
+    _: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await subastas_service.get_subasta_destacada(db)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"codigo": "SIN_SUBASTAS_DISPONIBLES", "mensaje": "No hay subastas disponibles en el momento."},
+        )
+    return result
 
 
 @router.get("/{id}")

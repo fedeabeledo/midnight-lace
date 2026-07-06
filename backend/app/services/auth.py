@@ -183,12 +183,14 @@ async def verificar_cliente(
         persona.estado = "activo"
         codigo = await _crear_codigo(db, persona_id, "registro")
         await db.commit()
+        await email_service.send_email(persona.email, "registro", codigo=codigo)
         return {"aprobado": True, "codigo": codigo, "categoria": categoria}
     else:
         cliente.admitido = "no"
         cliente.categoria = "comun"
         persona.estado = "inactivo"
         await db.commit()
+        await email_service.send_email(persona.email, "rechazo", motivo="Solicitud rechazada por el verificador.")
         return {"aprobado": False, "codigo": None, "categoria": "comun"}
 
 

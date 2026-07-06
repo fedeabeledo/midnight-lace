@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.productos import FotoResponse
+from app.schemas.productos import ComponenteResponse, DetalleArtisticoResponse, FotoResponse
 
 
 class SubastaResponse(BaseModel):
@@ -22,6 +22,7 @@ class SubastaResponse(BaseModel):
     moneda: str | None = None
     duracion_item_minutos: int | None = Field(None, alias="duracionItemMinutos")
     foto_principal: str | None = Field(None, alias="fotoPrincipal")
+    destacada: bool = False
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 
@@ -35,8 +36,9 @@ class SolicitudCrearSubasta(BaseModel):
     tiene_deposito: Literal["si", "no"] | None = Field(None, alias="tieneDeposito")
     seguridad_propia: Literal["si", "no"] | None = Field(None, alias="seguridadPropia")
     categoria: Literal["comun", "especial", "plata", "oro", "platino"]
-    moneda: Literal["ARS", "USD"]
+    moneda: Literal["ARS", "USD"] | None = None
     duracion_item_minutos: int = Field(alias="duracionItemMinutos", ge=1)
+    destacada: bool = False
 
     model_config = {"populate_by_name": True}
 
@@ -50,8 +52,8 @@ class SolicitudCrearSubasta(BaseModel):
     @field_validator("fecha")
     @classmethod
     def fecha_futura(cls, v: date) -> date:
-        if v <= date.today() + timedelta(days=10):
-            raise ValueError("La fecha debe ser al menos 10 días posterior a hoy.")
+        # if v <= date.today() + timedelta(days=10):
+        #     raise ValueError("La fecha debe ser al menos 10 días posterior a hoy.")
         return v
 
 
@@ -91,9 +93,13 @@ class ItemCatalogoResponse(BaseModel):
     id_producto: int = Field(alias="idProducto")
     nombre: str | None = None
     estado: Literal["nuevo", "usado"] | None = None
-    fotos: list[FotoResponse] = Field(default_factory=list, max_length=1)
+    fotos: list[FotoResponse] = Field(default_factory=list)
     descripcion_catalogo: str | None = Field(None, alias="descripcionCatalogo")
+    descripcion_completa: str | None = Field(None, alias="descripcionCompleta")
     precio_base: str | None = Field(None, alias="precioBase")
+    moneda: str | None = None
+    detalle_artistico: DetalleArtisticoResponse | None = Field(None, alias="detalleArtistico")
+    componentes: list[ComponenteResponse] = []
     orden: int
     comision: str
     subastado: str | None = None

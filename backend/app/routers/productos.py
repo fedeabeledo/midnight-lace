@@ -37,6 +37,8 @@ async def crear_producto(
     foto6: UploadFile = File(...),
     foto7: UploadFile | None = File(None),
     foto8: UploadFile | None = File(None),
+    foto9: UploadFile | None = File(None),
+    foto10: UploadFile | None = File(None),
     detallesArtisticos: str | None = Form(None),
     componentes: str | None = Form(None),
 ):
@@ -81,7 +83,7 @@ async def crear_producto(
 
     ts = int(time.time())
     fotos_urls = []
-    for i, f in enumerate([foto1, foto2, foto3, foto4, foto5, foto6, foto7, foto8], start=1):
+    for i, f in enumerate([foto1, foto2, foto3, foto4, foto5, foto6, foto7, foto8, foto9, foto10], start=1):
         if f is not None:
             content = await f.read()
             url = save_upload(content, f"producto_{user['identificador']}_{ts}_{i}.jpg")
