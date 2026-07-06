@@ -307,6 +307,7 @@ async def agregar_item_catalogo(
         "subastado": item.subastado,
         "iniciadoEn": item.iniciado_en,
         "finalizadoEn": item.finalizado_en,
+        "estadoProducto": producto.estado_producto,
     }
 
 
@@ -395,6 +396,7 @@ async def get_catalogo(
             "subastado": item.subastado,
             "iniciadoEn": item.iniciado_en,
             "finalizadoEn": item.finalizado_en,
+            "estadoProducto": producto.estado_producto if producto else None,
         })
 
     subasta = await db.get(Subasta, subasta_id)

@@ -99,6 +99,7 @@ class ItemCatalogoResponse(BaseModel):
     subastado: str | None = None
     iniciado_en: datetime | None = Field(None, alias="iniciadoEn")
     finalizado_en: datetime | None = Field(None, alias="finalizadoEn")
+    estado_producto: str | None = Field(None, alias="estadoProducto")
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 
