@@ -62,7 +62,8 @@ async def crear_puja(
             detail={"codigo": "PUJA_ITEM_INACTIVO", "mensaje": "El ítem ya fue subastado."},
         )
 
-    # 4. Verificar asistencia (conectado por WS)
+    # 4. Garantizar asistencia. El WebSocket tambien la crea, pero la puja no
+    # debe fallar si la conexion en vivo todavia no termino de registrarla.
     asistente = await db.scalar(
         select(Asistente).where(
             Asistente.cliente == comprador_id,
@@ -70,13 +71,18 @@ async def crear_puja(
         )
     )
     if asistente is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "codigo": "SIN_PERMISO",
-                "mensaje": "Debe conectarse a la subasta por WebSocket antes de pujar.",
-            },
+        max_postor = await db.scalar(
+            select(func.max(Asistente.numero_postor)).where(
+                Asistente.subasta == subasta_id
+            )
         )
+        asistente = Asistente(
+            cliente=comprador_id,
+            subasta=subasta_id,
+            numero_postor=(max_postor or 0) + 1,
+        )
+        db.add(asistente)
+        await db.flush()
 
     # 5. Verificar categoría
     cliente = await db.get(Cliente, comprador_id)
