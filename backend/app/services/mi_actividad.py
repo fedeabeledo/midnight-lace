@@ -297,14 +297,81 @@ async def pagar_compra(db: AsyncSession, registro_id: int, cliente_id: int, medi
         "moneda": registro.moneda,
     }
     db.add(Notificacion(persona=cliente_id, tipo="compra_pagada", detalle=json.dumps(datos_pago)))
+
+    # Check for category promotion
+    await db.flush()
+
+    from app.models.clientes import Cliente
+    from app.models.subastas import Subasta
+
+    cliente = await db.get(Cliente, cliente_id)
+    CATEGORIAS_ORDEN = ["comun", "especial", "plata", "oro", "platino"]
+
+    promocionado = False
+    categoria_anterior = None
+    nueva_categoria = None
+
+    if cliente and cliente.categoria in CATEGORIAS_ORDEN:
+        current_cat = cliente.categoria
+        current_idx = CATEGORIAS_ORDEN.index(current_cat)
+        if current_idx < len(CATEGORIAS_ORDEN) - 1:
+            # Count paid purchases in this category
+            paid_count = await db.scalar(
+                select(func.count(RegistroDeSubasta.identificador))
+                .join(Subasta, RegistroDeSubasta.subasta == Subasta.identificador)
+                .where(
+                    RegistroDeSubasta.cliente == cliente_id,
+                    RegistroDeSubasta.pagado == True,
+                    Subasta.categoria == current_cat
+                )
+            )
+
+            required_count = current_idx + 2
+            if paid_count >= required_count:
+                categoria_anterior = current_cat
+                nueva_categoria = CATEGORIAS_ORDEN[current_idx + 1]
+                cliente.categoria = nueva_categoria
+                promocionado = True
+
+                # Add notification
+                datos_ascenso = {
+                    "categoriaAnterior": categoria_anterior,
+                    "nuevaCategoria": nueva_categoria,
+                }
+                db.add(Notificacion(
+                    persona=cliente_id,
+                    tipo="ascenso_categoria",
+                    detalle=json.dumps(datos_ascenso)
+                ))
+
     await db.commit()
     await ws_manager.send_to_user(cliente_id, {"evento": "compra_pagada", "datos": datos_pago})
 
+    if promocionado:
+        await ws_manager.send_to_user(cliente_id, {
+            "evento": "ascenso_categoria",
+            "datos": {
+                "categoriaAnterior": categoria_anterior,
+                "nuevaCategoria": nueva_categoria,
+                "mensaje": f"¡Felicitaciones! Has sido promovido a la categoría {nueva_categoria.capitalize()}."
+            }
+        })
+
     tokens = await _token_fresco(db, cliente_id)
-    return {
+    response_data = {
         "registro": _serializar_registro(registro),
         **tokens,
     }
+
+    if promocionado:
+        response_data["ascenso"] = {
+            "promocionado": True,
+            "categoriaAnterior": categoria_anterior,
+            "nuevaCategoria": nueva_categoria,
+            "mensaje": f"¡Felicitaciones! Has sido promovido a la categoría {nueva_categoria.capitalize()}."
+        }
+
+    return response_data
 
 
 async def listar_multas(db: AsyncSession, cliente_id: int, pagina: int, cantidad: int) -> dict:

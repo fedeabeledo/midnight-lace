@@ -249,7 +249,7 @@ async def crear_puja(
             },
         )
 
-    # 11.5 Extender tiempo del item: sumar 5 segundos por cada puja
+    # 11.5 Extender tiempo del item si queda poco tiempo (menos de 10s -> resetear a 10s)
     finaliza_en = _item_finaliza_en(item, subasta)
     nueva_finaliza_en = finaliza_en
     if finaliza_en:

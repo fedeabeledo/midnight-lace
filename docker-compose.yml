@@ -5,6 +5,8 @@ services:
       POSTGRES_USER: midnightlace
       POSTGRES_PASSWORD: midnightlace
       POSTGRES_DB: midnightlace
+    ports:
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
