@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from decimal import Decimal
 
 
 class MetricasPujasPorMes(BaseModel):
@@ -24,12 +25,21 @@ class MetricasMiActividadResponse(BaseModel):
     totalGanadas: int
     totalImportePujado: float
     totalImportePagado: float
+    totalProductosPujados: int
+    productosGanados: int
+    productosNoGanados: int
+    totalImportePujadoARS: float
+    totalImportePujadoUSD: float
+    totalImportePagadoARS: float
+    totalImportePagadoUSD: float
     pujasPorMes: list[MetricasPujasPorMes]
     porCategoria: list[MetricasPorCategoria]
 
 
 class SolicitudPagarCompra(BaseModel):
     idMedioPago: int
+    retiraPersonalmente: bool | None = None
+    costoEnvio: Decimal | None = None
 
 
 class SolicitudRetiro(BaseModel):

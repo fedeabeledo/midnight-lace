@@ -4,17 +4,20 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, create_refresh_token
 from app.core.ws_manager import ws_manager
 from app.models import (
     Asistente,
+    Catalogo,
     Cliente,
     Duenio,
     Empleado,
     Foto,
+    ItemCatalogo,
+    MedioDePago,
     Multa,
     Notificacion,
     Persona,
@@ -24,7 +27,10 @@ from app.models import (
     Subastador,
     Subasta,
 )
+from app.services.medios_pago import _serializar_medio as serializar_medio_pago
 from app.services.pagos import procesar_pago
+
+HOME_SHIPPING_COST = Decimal("8000")
 
 
 async def _token_fresco(db: AsyncSession, persona_id: int) -> dict:
@@ -83,7 +89,11 @@ async def _detalles_producto_dict(db: AsyncSession, producto_id: int) -> dict | 
     }
 
 
-def _serializar_registro(r: RegistroDeSubasta, prod_dict: dict | None = None) -> dict:
+def _serializar_registro(
+    r: RegistroDeSubasta,
+    prod_dict: dict | None = None,
+    medio_pago_dict: dict | None = None,
+) -> dict:
     res = {
         "identificador": r.identificador,
         "subasta": r.subasta,
@@ -99,6 +109,8 @@ def _serializar_registro(r: RegistroDeSubasta, prod_dict: dict | None = None) ->
     }
     if prod_dict:
         res["detallesProducto"] = prod_dict
+    if medio_pago_dict:
+        res["medioPago"] = medio_pago_dict
     return res
 
 
@@ -133,6 +145,7 @@ async def listar_subastas(db: AsyncSession, cliente_id: int, pagina: int, cantid
                 "estado": s.estado,
                 "categoria": s.categoria,
                 "moneda": s.moneda,
+                "fotoPrincipal": s.foto_principal,
             }
             for s in subastas
         ],
@@ -152,6 +165,47 @@ async def listar_pujas(db: AsyncSession, cliente_id: int, pagina: int, cantidad:
     offset = (pagina - 1) * cantidad
     result = await db.execute(base.order_by(Pujo.identificador.desc()).offset(offset).limit(cantidad))
     pujas = result.scalars().all()
+
+    item_ids = list({p.item for p in pujas if p.item})
+    item_map = {}
+    if item_ids:
+        item_res = await db.execute(
+            select(ItemCatalogo, Producto, Subasta)
+            .select_from(ItemCatalogo)
+            .join(Catalogo, ItemCatalogo.catalogo == Catalogo.identificador)
+            .join(Subasta, Catalogo.subasta == Subasta.identificador)
+            .join(Producto, ItemCatalogo.producto == Producto.identificador)
+            .where(ItemCatalogo.identificador.in_(item_ids))
+        )
+        item_rows = item_res.all()
+        prod_ids = [producto.identificador for _, producto, _ in item_rows]
+
+        fotos_map = {}
+        if prod_ids:
+            foto_res = await db.execute(
+                select(Foto).where(Foto.producto.in_(prod_ids)).order_by(Foto.orden.asc())
+            )
+            for foto in foto_res.scalars().all():
+                fotos_map.setdefault(foto.producto, []).append(foto.foto)
+
+        for item, producto, subasta in item_rows:
+            fotos = fotos_map.get(producto.identificador, [])
+            item_map[item.identificador] = {
+                "producto": {
+                    "identificador": producto.identificador,
+                    "nombre": producto.nombre,
+                    "descripcionCatalogo": producto.descripcion_catalogo or producto.descripcion_completa or "",
+                    "descripcionCompleta": producto.descripcion_completa or "",
+                    "fotoPrincipal": fotos[0] if fotos else None,
+                    "fotos": fotos,
+                },
+                "subasta": {
+                    "identificador": subasta.identificador,
+                    "nombre": subasta.nombre,
+                    "moneda": subasta.moneda,
+                },
+            }
+
     return {
         "datos": [
             {
@@ -160,6 +214,7 @@ async def listar_pujas(db: AsyncSession, cliente_id: int, pagina: int, cantidad:
                 "importe": str(p.importe),
                 "ganador": p.ganador,
                 "realizadaEn": p.realizada_en.isoformat() if p.realizada_en else None,
+                **item_map.get(p.item, {}),
             }
             for p in pujas
         ],
@@ -199,8 +254,24 @@ async def listar_compras(db: AsyncSession, cliente_id: int, pagina: int, cantida
                 "fotos": fotos_map.get(p.identificador, []),
             }
 
+    medio_ids = list({r.medio_pago for r in registros if r.medio_pago})
+    medios_map = {}
+    if medio_ids:
+        medios_res = await db.execute(
+            select(MedioDePago).where(MedioDePago.identificador.in_(medio_ids))
+        )
+        for medio in medios_res.scalars().all():
+            medios_map[medio.identificador] = await serializar_medio_pago(db, medio)
+
     return {
-        "datos": [_serializar_registro(r, prod_map.get(r.producto)) for r in registros],
+        "datos": [
+            _serializar_registro(
+                r,
+                prod_map.get(r.producto),
+                medios_map.get(r.medio_pago),
+            )
+            for r in registros
+        ],
         "meta": _paginar(total, pagina, cantidad),
     }
 
@@ -227,7 +298,14 @@ async def actualizar_retiro(db: AsyncSession, registro_id: int, cliente_id: int,
     return _serializar_registro(registro)
 
 
-async def pagar_compra(db: AsyncSession, registro_id: int, cliente_id: int, medio_id: int) -> dict:
+async def pagar_compra(
+    db: AsyncSession,
+    registro_id: int,
+    cliente_id: int,
+    medio_id: int,
+    retira_personalmente: bool | None = None,
+    costo_envio: Decimal | None = None,
+) -> dict:
     registro = await db.get(RegistroDeSubasta, registro_id)
     if registro is None or registro.cliente != cliente_id:
         raise HTTPException(
@@ -245,6 +323,16 @@ async def pagar_compra(db: AsyncSession, registro_id: int, cliente_id: int, medi
             status_code=status.HTTP_409_CONFLICT,
             detail={"codigo": "COMPRA_VENCIDA", "mensaje": "El plazo de pago venció."},
         )
+
+    if retira_personalmente is not None:
+        registro.retira_personalmente = retira_personalmente
+
+    if registro.retira_personalmente:
+        registro.costo_envio = Decimal("0")
+    elif costo_envio is not None:
+        registro.costo_envio = costo_envio
+    elif registro.costo_envio <= 0:
+        registro.costo_envio = HOME_SHIPPING_COST
 
     monto = registro.importe + registro.comision + registro.costo_envio
 
@@ -460,10 +548,57 @@ async def obtener_metricas(db: AsyncSession, cliente_id: int) -> dict:
         .join(Asistente, Pujo.asistente == Asistente.identificador)
         .where(Asistente.cliente == cliente_id)
     )
+    envio_pagado_expr = case(
+        (RegistroDeSubasta.retira_personalmente == True, Decimal("0")),
+        (RegistroDeSubasta.costo_envio > 0, RegistroDeSubasta.costo_envio),
+        else_=HOME_SHIPPING_COST,
+    )
     total_importe_pagado = await db.scalar(
-        select(func.coalesce(func.sum(RegistroDeSubasta.importe), 0))
+        select(func.coalesce(func.sum(RegistroDeSubasta.importe + envio_pagado_expr), 0))
         .where(RegistroDeSubasta.cliente == cliente_id, RegistroDeSubasta.pagado == True)
     )
+    total_productos_pujados = await db.scalar(
+        select(func.count(func.distinct(Pujo.item)))
+        .join(Asistente, Pujo.asistente == Asistente.identificador)
+        .where(Asistente.cliente == cliente_id)
+    )
+    productos_ganados = await db.scalar(
+        select(func.count(func.distinct(Pujo.item)))
+        .join(Asistente, Pujo.asistente == Asistente.identificador)
+        .where(Asistente.cliente == cliente_id, Pujo.ganador == "si")
+    )
+    total_importe_pujado_por_moneda_result = await db.execute(
+        select(Subasta.moneda, func.coalesce(func.sum(Pujo.importe), 0))
+        .select_from(Pujo)
+        .join(Asistente, Pujo.asistente == Asistente.identificador)
+        .join(Subasta, Asistente.subasta == Subasta.identificador)
+        .where(Asistente.cliente == cliente_id)
+        .group_by(Subasta.moneda)
+    )
+    total_importe_pagado_por_moneda_result = await db.execute(
+        select(
+            RegistroDeSubasta.moneda,
+            func.coalesce(func.sum(RegistroDeSubasta.importe), 0),
+            func.coalesce(func.sum(envio_pagado_expr), 0),
+        )
+        .where(RegistroDeSubasta.cliente == cliente_id, RegistroDeSubasta.pagado == True)
+        .group_by(RegistroDeSubasta.moneda)
+    )
+    importe_pujado_por_moneda = {
+        (moneda or "ARS").upper(): float(total or 0)
+        for moneda, total in total_importe_pujado_por_moneda_result.all()
+    }
+    importe_pagado_por_moneda = {}
+    for moneda, total_importe, total_envio in total_importe_pagado_por_moneda_result.all():
+        moneda_normalizada = (moneda or "ARS").upper()
+        importe_pagado_por_moneda[moneda_normalizada] = (
+            importe_pagado_por_moneda.get(moneda_normalizada, 0) + float(total_importe or 0)
+        )
+        if total_envio:
+            importe_pagado_por_moneda["ARS"] = (
+                importe_pagado_por_moneda.get("ARS", 0) + float(total_envio or 0)
+            )
+    productos_no_ganados = max(0, (total_productos_pujados or 0) - (productos_ganados or 0))
 
     pujas_por_mes_result = await db.execute(
         select(
@@ -500,7 +635,7 @@ async def obtener_metricas(db: AsyncSession, cliente_id: int) -> dict:
     }
 
     ganadas_result = await db.execute(
-        select(Subasta.categoria, func.count().label("ganadas"))
+        select(Subasta.categoria, func.count(func.distinct(Pujo.item)).label("ganadas"))
         .select_from(Pujo)
         .join(Asistente, Pujo.asistente == Asistente.identificador)
         .join(Subasta, Asistente.subasta == Subasta.identificador)
@@ -536,6 +671,13 @@ async def obtener_metricas(db: AsyncSession, cliente_id: int) -> dict:
         "totalGanadas": pujas_ganadas or 0,
         "totalImportePujado": float(total_importe_pujado or 0),
         "totalImportePagado": float(total_importe_pagado or 0),
+        "totalProductosPujados": total_productos_pujados or 0,
+        "productosGanados": productos_ganados or 0,
+        "productosNoGanados": productos_no_ganados,
+        "totalImportePujadoARS": importe_pujado_por_moneda.get("ARS", 0),
+        "totalImportePujadoUSD": importe_pujado_por_moneda.get("USD", 0),
+        "totalImportePagadoARS": importe_pagado_por_moneda.get("ARS", 0),
+        "totalImportePagadoUSD": importe_pagado_por_moneda.get("USD", 0),
         "pujasPorMes": pujas_por_mes,
         "porCategoria": por_categoria,
     }

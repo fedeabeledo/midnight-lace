@@ -63,7 +63,14 @@ async def pagar_compra(
     user: dict = Depends(require_role("comprador")),
     db: AsyncSession = Depends(get_db),
 ):
-    return await svc.pagar_compra(db, id, user["identificador"], body.idMedioPago)
+    return await svc.pagar_compra(
+        db,
+        id,
+        user["identificador"],
+        body.idMedioPago,
+        body.retiraPersonalmente,
+        body.costoEnvio,
+    )
 
 
 @router.get("/multas")
